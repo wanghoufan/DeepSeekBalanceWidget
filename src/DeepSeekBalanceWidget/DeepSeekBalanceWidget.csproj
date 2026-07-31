@@ -8,6 +8,13 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>DeepSeekBalanceWidget</RootNamespace>
     <AssemblyName>DeepSeekBalanceWidget</AssemblyName>
+    <Version>0.1.0</Version>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+    <Authors>wanghoufan</Authors>
+    <Product>DeepSeek Balance Widget</Product>
+    <Description>Windows desktop widget for monitoring DeepSeek API balance.</Description>
+    <RepositoryUrl>https://github.com/wanghoufan/DeepSeekBalanceWidget</RepositoryUrl>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />

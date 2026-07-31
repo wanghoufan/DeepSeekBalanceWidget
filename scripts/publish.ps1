@@ -1,14 +1,20 @@
 [CmdletBinding()]
 param(
     [ValidateSet("win-x64", "win-arm64")]
-    [string]$Runtime = "win-x64"
+    [string]$Runtime = "win-x64",
+
+    [string]$OutputDirectory = "release"
 )
 
 $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $projectFile = Join-Path $projectRoot "src\DeepSeekBalanceWidget\DeepSeekBalanceWidget.csproj"
-$releaseDir = Join-Path $projectRoot "release"
+$releaseDir = [System.IO.Path]::GetFullPath((Join-Path $projectRoot $OutputDirectory))
+
+if (-not $releaseDir.StartsWith($projectRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "OutputDirectory must stay inside the project root."
+}
 
 New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
 

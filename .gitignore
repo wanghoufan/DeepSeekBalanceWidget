@@ -2,6 +2,7 @@
 **/bin/
 **/obj/
 release/
+release-*/
 artifacts/runtime/
 
 # IDE and user-local settings

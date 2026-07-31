@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+      - "agent/**"
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore DeepSeekBalanceWidget.sln
+
+      - name: Build
+        run: dotnet build DeepSeekBalanceWidget.sln -c Release --no-restore
+
+      - name: Test
+        run: dotnet test DeepSeekBalanceWidget.sln -c Release --no-build
