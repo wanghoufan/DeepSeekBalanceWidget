@@ -2,6 +2,8 @@
 
 一个面向 Windows 11 的 DeepSeek API 余额悬浮小工具。它支持余额轮询、充值与赠送余额明细、低余额及异常下降提醒、迷你胶囊、系统托盘、开机自启和预计峰值时段提示。
 
+这是一个面向中文用户的 Windows 桌面工具。下面的标签是 GitHub 使用的技术分类，中文含义见[标签说明](#标签说明)。
+
 [![CI](https://github.com/wanghoufan/DeepSeekBalanceWidget/actions/workflows/ci.yml/badge.svg)](https://github.com/wanghoufan/DeepSeekBalanceWidget/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/wanghoufan/DeepSeekBalanceWidget?display_name=tag)](https://github.com/wanghoufan/DeepSeekBalanceWidget/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows%2011-0078D4)](https://github.com/wanghoufan/DeepSeekBalanceWidget)
@@ -30,6 +32,19 @@ DeepSeekBalanceWidget-v0.1.0-win-x64.zip
 - 系统托盘状态、置顶、隐藏、开机自启
 - 按北京时间显示官方峰值时段参考
 - API Key 使用 Windows DPAPI CurrentUser 加密保存
+
+## 标签说明
+
+| GitHub 标签 | 中文解释 |
+| --- | --- |
+| `deepseek` | 对接 DeepSeek 开放平台 API |
+| `api-monitoring` | 监控 API 余额、变化和可用状态 |
+| `desktop-widget` | Windows 桌面悬浮小工具 |
+| `windows` | 面向 Windows 11 使用 |
+| `wpf` | 使用 WPF 构建桌面界面 |
+| `dotnet` | 基于 .NET 8 开发 |
+
+仓库右侧的 About 区域提供项目简介和这些技术标签；README 负责提供完整的中文使用说明。
 
 ## 日常启动
 
