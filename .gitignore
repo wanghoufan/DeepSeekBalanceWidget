@@ -1,0 +1,28 @@
+# Build outputs
+**/bin/
+**/obj/
+release/
+release-*/
+artifacts/runtime/
+
+# IDE and user-local settings
+.vs/
+.vscode/
+*.user
+*.suo
+.claude/settings.local.json
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+TestResults/
+
+# Local secrets and configuration
+config.json
+*.secrets.json
+
+# OS metadata
+Thumbs.db
+Desktop.ini
+.DS_Store

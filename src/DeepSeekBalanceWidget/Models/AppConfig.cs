@@ -1,0 +1,32 @@
+using System;
+
+namespace DeepSeekBalanceWidget.Models;
+
+public sealed class AppConfig
+{
+    public int ConfigVersion { get; set; } = 1;
+    public string? ApiKeyEncrypted { get; set; }
+    public string SelectedCurrency { get; set; } = "CNY";
+    public int RefreshIntervalSeconds { get; set; } = 30;
+    public decimal LowBalanceThreshold { get; set; } = 10m;
+    public decimal AbnormalChangePercent { get; set; } = 10m;
+    public int LowBalanceCooldownSeconds { get; set; } = 1800;
+    public int AbnormalAlertCooldownSeconds { get; set; } = 600;
+    public bool ShowToastNotifications { get; set; } = true;
+    public bool IsAlwaysOnTop { get; set; } = true;
+    public bool UseMockData { get; set; }
+    public bool UseMiniMode { get; set; }
+    public string DefaultCorner { get; set; } = "Remember"; // Remember / BottomRight / BottomLeft
+    public bool ShowPeakIndicator { get; set; } = true;
+    public List<PeakRange> PeakHourRanges { get; set; } = new()
+    {
+        new PeakRange(9, 12),
+        new PeakRange(14, 18)
+    };
+    public bool AutoStart { get; set; }
+    public double? WindowLeft { get; set; }
+    public double? WindowTop { get; set; }
+    public decimal? LastSuccessfulBalance { get; set; }
+    public DateTimeOffset? LastSuccessfulRefreshUtc { get; set; }
+    public bool InLowBalanceState { get; set; }
+}
