@@ -5,6 +5,8 @@
         Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize"
         WindowStartupLocation="Manual" Width="236" SizeToContent="Height"
         MouseLeftButtonDown="Window_MouseLeftButtonDown"
+        MouseEnter="Window_MouseEnter"
+        MouseLeave="Window_MouseLeave"
         LocationChanged="Window_LocationChanged">
   <Window.Resources>
     <LinearGradientBrush x:Key="CardBrush" StartPoint="0,0" EndPoint="1,1">
@@ -89,6 +91,15 @@
                    Margin="0,0,0,6"/>
         <TextBlock x:Name="BreakdownText" Text="充值 --.--"
                    FontSize="11" Foreground="#C8C8C8" Margin="0,0,0,5"/>
+        <StackPanel x:Name="CodexPanel">
+          <Border Height="1" Background="#20FFFFFF" Margin="0,2,0,7"/>
+          <TextBlock x:Name="CodexUsageText" Text="Codex · 正在读取..."
+                     FontSize="14" FontWeight="SemiBold" Foreground="#BFDFFF"
+                     FontFamily="Segoe UI" TextWrapping="Wrap" Margin="0,0,0,3"/>
+          <TextBlock x:Name="CodexResetText" Text="--"
+                     FontSize="12" FontWeight="SemiBold" Foreground="#8F99A6"
+                     FontFamily="Segoe UI" TextWrapping="Wrap" Margin="0,0,0,7"/>
+        </StackPanel>
         <Grid>
           <TextBlock x:Name="RefreshTimeText" Text="上次刷新：--" FontSize="9"
                      Foreground="#8F99A6" VerticalAlignment="Center"/>
@@ -116,6 +127,9 @@
         <TextBlock x:Name="MiniBalanceText" Text="¥ --.--" FontSize="15"
                    FontWeight="SemiBold" Foreground="#F0F7FF" FontFamily="Segoe UI"/>
         <TextBlock x:Name="MiniChangeText" Text="--" FontSize="12" Foreground="#D0D0D0"
+                   Margin="8,0,0,0" VerticalAlignment="Center"/>
+        <TextBlock x:Name="MiniCodexText" Text="C --" FontSize="13"
+                   FontWeight="SemiBold" FontFamily="Segoe UI" Foreground="#BFDFFF"
                    Margin="8,0,0,0" VerticalAlignment="Center"/>
         <TextBlock x:Name="MiniPeakDot" Text="●" FontSize="9" Margin="8,0,0,0"
                    VerticalAlignment="Center" Foreground="#4CC94C"/>

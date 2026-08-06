@@ -1,6 +1,6 @@
 # DeepSeek Balance Widget
 
-一个面向 Windows 11 的 DeepSeek API 余额悬浮小工具。它支持余额轮询、充值与赠送余额明细、低余额及异常下降提醒、迷你胶囊、系统托盘、开机自启和预计峰值时段提示。
+一个面向 Windows 11 的 DeepSeek API 余额与 ChatGPT Plus 用量悬浮小工具。它支持余额轮询、Plus 剩余额度、贴边自动隐藏、迷你胶囊、系统托盘、开机自启和异常提醒。
 
 这是一个面向中文用户的 Windows 桌面工具。下面的标签是 GitHub 使用的技术分类，中文含义见[标签说明](#标签说明)。
 
@@ -16,7 +16,7 @@
 前往 [Releases](https://github.com/wanghoufan/DeepSeekBalanceWidget/releases/latest) 下载：
 
 ```text
-DeepSeekBalanceWidget-v0.1.0-win-x64.zip
+DeepSeekBalanceWidget-v0.2.0-win-x64.zip
 ```
 
 解压后直接运行 `DeepSeekBalanceWidget.exe`。发布包为 Windows x64 自包含单文件版本，目标电脑无需预先安装 .NET Runtime。
@@ -27,8 +27,9 @@ DeepSeekBalanceWidget-v0.1.0-win-x64.zip
 
 - 实时显示 DeepSeek API 总余额、充值余额和有效赠送余额
 - 显示与上一次成功刷新的金额和百分比变化
+- 通过本机 Codex 登录状态持续显示 ChatGPT Plus 用量窗口、剩余额度和重置时间
 - 低余额及异常下降提醒，带冷却机制避免重复打扰
-- 完整卡片与迷你胶囊模式，可自由拖动并记忆位置
+- 完整卡片与迷你胶囊模式，可自由拖动、记忆位置，并可选贴边自动隐藏
 - 系统托盘状态、置顶、隐藏、开机自启
 - 按北京时间显示官方峰值时段参考
 - API Key 使用 Windows DPAPI CurrentUser 加密保存
@@ -48,19 +49,8 @@ DeepSeekBalanceWidget-v0.1.0-win-x64.zip
 
 ## 日常启动
 
-最方便的方式是双击仓库根目录的：
-
-```text
-启动余额监控.cmd
-```
-
-首次启动时，脚本会自动生成发布版。之后会直接启动：
-
-```text
-release\DeepSeekBalanceWidget.exe
-```
-
-不要从 `src\...\bin\Debug\...` 启动日常使用版本。该目录属于开发构建缓存，路径和文件随编译变化。
+日常使用请运行发布包中的 `DeepSeekBalanceWidget.exe`。不要从
+`src\...\bin\Debug\...` 启动；该目录属于开发构建缓存，路径和文件会随编译变化。
 
 ## 发布
 
@@ -116,8 +106,7 @@ dotnet run --project .\src\DeepSeekBalanceWidget -- --mock-scenario sequence
 ├─ scripts/                构建与发布脚本
 ├─ release/                本地发布产物，不提交 Git
 ├─ DeepSeekBalanceWidget.sln
-├─ README.md
-└─ 启动余额监控.cmd
+└─ README.md
 ```
 
 ## 配置与安全

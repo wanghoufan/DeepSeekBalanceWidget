@@ -80,11 +80,7 @@ public partial class App : System.Windows.Application
                     Dispatcher.Invoke(() =>
                     {
                         if (_mainWindow is not null)
-                        {
-                            _mainWindow.Show();
-                            _mainWindow.WindowState = WindowState.Normal;
-                            _mainWindow.Activate();
-                        }
+                            _mainWindow.RestoreAndActivate();
                     });
                 }
             });
