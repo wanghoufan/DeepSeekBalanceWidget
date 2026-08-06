@@ -8,24 +8,37 @@ using Color = System.Windows.Media.Color;
 using System.Windows.Threading;
 using DeepSeekBalanceWidget.Models;
 using DeepSeekBalanceWidget.Services;
+using MouseEventArgs = System.Windows.Input.MouseEventArgs;
+using Point = System.Windows.Point;
 
 namespace DeepSeekBalanceWidget;
 
 public partial class MainWindow : Window
 {
+    private const double EdgeDetectionThreshold = 16;
+    private const double EdgeRevealThickness = 12;
+
     private readonly ConfigService _configService;
     private readonly AppConfig _cfg;
     private readonly CancellationTokenSource _cts = new();
     private IBalanceProvider _provider;
+    private readonly ICodexUsageProvider _codexUsageProvider;
     private readonly DispatcherTimer _timer;
+    private readonly DispatcherTimer _codexTimer;
     private readonly DispatcherTimer _savePosTimer;
     private readonly DispatcherTimer _peakTimer;
+    private readonly DispatcherTimer _autoHideTimer;
     private AlertState _alertState;
     private bool _isRefreshing;
     private bool _isAuthPaused;
     private bool _isExiting;
     private bool _isMini;
     private bool _isPeak;
+    private bool _isDragging;
+    private bool _isEdgeHidden;
+    private bool _isSettingsOpen;
+    private bool _isChangingDockPosition;
+    private DockEdge _dockEdge;
 
     public event Action? RequestExit;
     public event Action<string, bool?>? TrayStatusChanged;
@@ -36,11 +49,21 @@ public partial class MainWindow : Window
         _configService = configService;
         _cfg = cfg;
         _provider = provider;
+        _codexUsageProvider = new CodexAppServerClient();
+
+        _savePosTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _savePosTimer.Tick += (_, _) => { _savePosTimer.Stop(); SavePosition(); };
+
+        _autoHideTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _autoHideTimer.Tick += AutoHideTimer_Tick;
 
         Topmost = _cfg.IsAlwaysOnTop;
         UpdatePinButton();
         ApplySavedPosition();
         ApplyMiniMode(_cfg.UseMiniMode);
+        ApplyCodexAppearance();
+        ApplyCodexVisibility();
+        Loaded += (_, _) => EvaluateEdgeAutoHide();
 
         _alertState = new AlertState(
             _cfg.LastSuccessfulBalance,
@@ -54,8 +77,9 @@ public partial class MainWindow : Window
         _timer.Tick += async (_, _) => await RefreshAsync();
         _timer.Start();
 
-        _savePosTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
-        _savePosTimer.Tick += (_, _) => { _savePosTimer.Stop(); SavePosition(); };
+        _codexTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
+        _codexTimer.Tick += async (_, _) => await RefreshCodexUsageAsync();
+        if (_cfg.EnableCodexMonitoring) _codexTimer.Start();
 
         _peakTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
         _peakTimer.Tick += (_, _) => RefreshPeakStatus();
@@ -63,6 +87,7 @@ public partial class MainWindow : Window
 
         RefreshPeakStatus();
         _ = RefreshAsync();
+        if (_cfg.EnableCodexMonitoring) _ = RefreshCodexUsageAsync();
     }
 
     private void ApplySavedPosition()
@@ -116,6 +141,7 @@ public partial class MainWindow : Window
 
     public void ResetPosition()
     {
+        DisableCurrentDock();
         ApplyDefaultCorner();
         SavePosition();
     }
@@ -123,8 +149,11 @@ public partial class MainWindow : Window
     private void SavePosition()
     {
         if (double.IsNaN(Left) || double.IsNaN(Top)) return;
-        _cfg.WindowLeft = Left;
-        _cfg.WindowTop = Top;
+        var position = _dockEdge == DockEdge.None
+            ? new Point(Left, Top)
+            : GetDockPosition(hidden: false);
+        _cfg.WindowLeft = position.X;
+        _cfg.WindowTop = position.Y;
         _configService.Save(_cfg);
     }
 
@@ -133,8 +162,21 @@ public partial class MainWindow : Window
         _isMini = mini;
         Card.Visibility = mini ? Visibility.Collapsed : Visibility.Visible;
         MiniCard.Visibility = mini ? Visibility.Visible : Visibility.Collapsed;
-        Width = mini ? 156 : 236;
-        if (IsLoaded) ClampToWorkArea(); // 尺寸变化后只做边界 Clamp，不强制回角落
+        Width = mini ? GetMiniModeWidth() : 236;
+        if (IsLoaded)
+        {
+            if (_dockEdge != DockEdge.None)
+                SetDockPosition(_isEdgeHidden);
+            else
+                ClampToWorkArea(); // 尺寸变化后只做边界 Clamp，不强制回角落
+        }
+    }
+
+    private double GetMiniModeWidth()
+    {
+        if (!_cfg.EnableCodexMonitoring) return 156;
+        double extra = Math.Max(0, Math.Clamp(_cfg.CodexFontSize, 10, 24) - 14) * 6;
+        return 205 + extra;
     }
 
     private void MiniBtn_Click(object sender, RoutedEventArgs e)
@@ -157,7 +199,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        try { DragMove(); } catch (InvalidOperationException) { }
+        DragWindow();
     }
 
     private void UpdatePinButton()
@@ -193,6 +235,7 @@ public partial class MainWindow : Window
 
     private void Window_LocationChanged(object sender, EventArgs e)
     {
+        if (_isChangingDockPosition) return;
         _savePosTimer.Stop();
         _savePosTimer.Start();
     }
@@ -201,7 +244,104 @@ public partial class MainWindow : Window
     {
         if (e.ButtonState != MouseButtonState.Pressed) return;
         if (IsInsideButton(e.OriginalSource as DependencyObject)) return;
+        DragWindow();
+    }
+
+    private void DragWindow()
+    {
+        _autoHideTimer.Stop();
+        _isDragging = true;
+        _isEdgeHidden = false;
+        _dockEdge = DockEdge.None;
         try { DragMove(); } catch (InvalidOperationException) { }
+        finally { _isDragging = false; }
+
+        EvaluateEdgeAutoHide();
+        SavePosition();
+    }
+
+    private void Window_MouseEnter(object sender, MouseEventArgs e)
+    {
+        _autoHideTimer.Stop();
+        if (_isEdgeHidden) SetDockPosition(hidden: false);
+    }
+
+    private void Window_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (_cfg.EnableEdgeAutoHide && _dockEdge != DockEdge.None && !_isDragging)
+            _autoHideTimer.Start();
+    }
+
+    private void AutoHideTimer_Tick(object? sender, EventArgs e)
+    {
+        if (IsMouseOver)
+        {
+            _autoHideTimer.Stop();
+            return;
+        }
+        if (_isDragging || _isSettingsOpen || ContextMenu?.IsOpen == true) return;
+
+        _autoHideTimer.Stop();
+        if (_cfg.EnableEdgeAutoHide && _dockEdge != DockEdge.None)
+            SetDockPosition(hidden: true);
+    }
+
+    private void EvaluateEdgeAutoHide()
+    {
+        if (!_cfg.EnableEdgeAutoHide || _isDragging || !IsLoaded)
+        {
+            if (!_cfg.EnableEdgeAutoHide) DisableCurrentDock();
+            return;
+        }
+
+        var window = CurrentWindowRect();
+        var edge = EdgeAutoHideCalculator.Detect(
+            window, SystemParameters.WorkArea, EdgeDetectionThreshold);
+        if (edge == DockEdge.None) return;
+
+        _dockEdge = edge;
+        SetDockPosition(hidden: true);
+        SavePosition();
+    }
+
+    private Rect CurrentWindowRect()
+    {
+        double width = ActualWidth > 0 ? ActualWidth : Width;
+        double height = ActualHeight > 0 ? ActualHeight : Height;
+        return new Rect(Left, Top, width, height);
+    }
+
+    private Point GetDockPosition(bool hidden)
+    {
+        var window = CurrentWindowRect();
+        return hidden
+            ? EdgeAutoHideCalculator.HiddenPosition(
+                _dockEdge, window, SystemParameters.WorkArea, EdgeRevealThickness)
+            : EdgeAutoHideCalculator.VisiblePosition(
+                _dockEdge, window, SystemParameters.WorkArea);
+    }
+
+    private void SetDockPosition(bool hidden)
+    {
+        if (_dockEdge == DockEdge.None) return;
+        var position = GetDockPosition(hidden);
+        _isChangingDockPosition = true;
+        try
+        {
+            Left = position.X;
+            Top = position.Y;
+            _isEdgeHidden = hidden;
+        }
+        finally { _isChangingDockPosition = false; }
+    }
+
+    private void DisableCurrentDock()
+    {
+        _autoHideTimer.Stop();
+        if (_dockEdge != DockEdge.None && _isEdgeHidden)
+            SetDockPosition(hidden: false);
+        _isEdgeHidden = false;
+        _dockEdge = DockEdge.None;
     }
 
     private static bool IsInsideButton(DependencyObject? source)
@@ -225,24 +365,45 @@ public partial class MainWindow : Window
     {
         _isAuthPaused = false;
         _timer.Start();
-        await RefreshAsync();
+        var codexRefresh = _cfg.EnableCodexMonitoring
+            ? RefreshCodexUsageAsync()
+            : Task.CompletedTask;
+        await Task.WhenAll(RefreshAsync(), codexRefresh);
     }
 
     public void OpenSettings()
     {
+        if (_isEdgeHidden) SetDockPosition(hidden: false);
         var dlg = new SettingsWindow(_configService, _cfg) { Owner = this };
-        if (dlg.ShowDialog() == true)
+        _isSettingsOpen = true;
+        bool saved;
+        try { saved = dlg.ShowDialog() == true; }
+        finally { _isSettingsOpen = false; }
+        if (saved)
         {
             Topmost = _cfg.IsAlwaysOnTop;
             UpdatePinButton();
             ApplyMiniMode(_cfg.UseMiniMode);
+            ApplyCodexAppearance();
+            ApplyCodexMonitoring();
             _timer.Interval = TimeSpan.FromSeconds(Math.Clamp(_cfg.RefreshIntervalSeconds, 5, 3600));
             if (_provider is DeepSeekApiClient) RebuildProvider();
             _isAuthPaused = false;
             _timer.Start();
             RefreshPeakStatus(); // 设置变更后立即刷新高峰状态
             _ = RefreshAsync();
+            EvaluateEdgeAutoHide();
         }
+        else if (_cfg.EnableEdgeAutoHide && _dockEdge != DockEdge.None)
+            _autoHideTimer.Start();
+    }
+
+    public void RestoreAndActivate()
+    {
+        Show();
+        WindowState = WindowState.Normal;
+        if (_isEdgeHidden) SetDockPosition(hidden: false);
+        Activate();
     }
 
     private void RebuildProvider()
@@ -330,6 +491,91 @@ public partial class MainWindow : Window
             RaiseTrayError();
         }
         finally { _isRefreshing = false; }
+    }
+
+    private bool _isCodexRefreshing;
+
+    private async Task RefreshCodexUsageAsync()
+    {
+        if (!_cfg.EnableCodexMonitoring || _isCodexRefreshing) return;
+        _isCodexRefreshing = true;
+        try
+        {
+            var usage = await _codexUsageProvider.GetUsageAsync(_cts.Token);
+            ApplyCodexUsage(usage);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception)
+        {
+            ApplyCodexUsage(CodexUsageSnapshot.Unavailable("Codex 用量读取失败"));
+        }
+        finally { _isCodexRefreshing = false; }
+    }
+
+    private void ApplyCodexMonitoring()
+    {
+        ApplyCodexVisibility();
+        ApplyMiniMode(_isMini);
+        if (_cfg.EnableCodexMonitoring)
+        {
+            _codexTimer.Start();
+            _ = RefreshCodexUsageAsync();
+        }
+        else
+        {
+            _codexTimer.Stop();
+        }
+    }
+
+    private void ApplyCodexVisibility()
+    {
+        var visibility = _cfg.EnableCodexMonitoring ? Visibility.Visible : Visibility.Collapsed;
+        CodexPanel.Visibility = visibility;
+        MiniCodexText.Visibility = visibility;
+    }
+
+    private void ApplyCodexAppearance()
+    {
+        double size = Math.Clamp(_cfg.CodexFontSize, 10, 24);
+        FontWeight weight = _cfg.CodexFontStyle switch
+        {
+            "Regular" => FontWeights.Normal,
+            "Bold" => FontWeights.Bold,
+            _ => FontWeights.SemiBold
+        };
+
+        CodexUsageText.FontFamily = new System.Windows.Media.FontFamily("Segoe UI");
+        CodexResetText.FontFamily = CodexUsageText.FontFamily;
+        MiniCodexText.FontFamily = CodexUsageText.FontFamily;
+        CodexUsageText.FontSize = size;
+        CodexResetText.FontSize = Math.Max(10, size - 2);
+        MiniCodexText.FontSize = Math.Max(11, size - 1);
+        CodexUsageText.FontWeight = weight;
+        CodexResetText.FontWeight = weight;
+        MiniCodexText.FontWeight = weight;
+    }
+
+    private void ApplyCodexUsage(CodexUsageSnapshot usage)
+    {
+        if (!usage.IsAvailable || usage.Windows.Count == 0)
+        {
+            CodexUsageText.Text = "ChatGPT Plus · 暂不可用";
+            CodexUsageText.Foreground = new SolidColorBrush(Colors.Orange);
+            CodexResetText.Text = usage.Error ?? "未返回 Codex 用量窗口";
+            MiniCodexText.Text = "C --";
+            MiniCodexText.ToolTip = CodexResetText.Text;
+            return;
+        }
+
+        CodexUsageText.Foreground = new SolidColorBrush(Color.FromRgb(0xBF, 0xDF, 0xFF));
+        CodexUsageText.Text = CodexUsageFormatter.FormatPlan(usage.PlanType)
+            + " · "
+            + string.Join(" · ", usage.Windows.Select(CodexUsageFormatter.FormatWindow));
+        CodexResetText.Text = string.Join(" · ", usage.Windows.Select(CodexUsageFormatter.FormatReset));
+
+        int remaining = usage.Windows.Min(window => window.RemainingPercent);
+        MiniCodexText.Text = $"C {remaining}%";
+        MiniCodexText.ToolTip = CodexUsageText.Text + Environment.NewLine + CodexResetText.Text;
     }
 
     private void RefreshPeakStatus()

@@ -24,13 +24,13 @@ public sealed class TrayIconService : IDisposable
             Text = "DeepSeek 余额",
             Visible = true
         };
-        _icon.DoubleClick += (_, _) => { mainWindow.Show(); mainWindow.Activate(); };
+        _icon.DoubleClick += (_, _) => mainWindow.RestoreAndActivate();
 
         var menu = new ContextMenuStrip();
         _statusItem = new ToolStripMenuItem("余额：--") { Enabled = false };
         menu.Items.Add(_statusItem);
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("显示窗口", null, (_, _) => { mainWindow.Show(); mainWindow.Activate(); });
+        menu.Items.Add("显示窗口", null, (_, _) => mainWindow.RestoreAndActivate());
         menu.Items.Add("立即刷新", null, (_, _) => mainWindow.RefreshNow());
         menu.Items.Add("设置", null, (_, _) => mainWindow.OpenSettings());
         menu.Items.Add("恢复默认位置", null, (_, _) => mainWindow.ResetPosition());

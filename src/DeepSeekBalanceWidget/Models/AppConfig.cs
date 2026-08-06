@@ -14,8 +14,12 @@ public sealed class AppConfig
     public int AbnormalAlertCooldownSeconds { get; set; } = 600;
     public bool ShowToastNotifications { get; set; } = true;
     public bool IsAlwaysOnTop { get; set; } = true;
+    public bool EnableEdgeAutoHide { get; set; }
     public bool UseMockData { get; set; }
     public bool UseMiniMode { get; set; }
+    public bool EnableCodexMonitoring { get; set; } = true;
+    public double CodexFontSize { get; set; } = 14;
+    public string CodexFontStyle { get; set; } = "DeepSeek"; // DeepSeek / Regular / Bold
     public string DefaultCorner { get; set; } = "Remember"; // Remember / BottomRight / BottomLeft
     public bool ShowPeakIndicator { get; set; } = true;
     public List<PeakRange> PeakHourRanges { get; set; } = new()

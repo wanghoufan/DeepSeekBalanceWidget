@@ -22,7 +22,16 @@ public partial class SettingsWindow : Window
         ChangePercentBox.Text = cfg.AbnormalChangePercent.ToString("0.##");
         CurrencyBox.SelectedIndex = cfg.SelectedCurrency.Equals("USD", System.StringComparison.OrdinalIgnoreCase) ? 1 : 0;
         TopmostCheck.IsChecked = cfg.IsAlwaysOnTop;
+        EdgeAutoHideCheck.IsChecked = cfg.EnableEdgeAutoHide;
         MiniModeCheck.IsChecked = cfg.UseMiniMode;
+        EnableCodexCheck.IsChecked = cfg.EnableCodexMonitoring;
+        CodexFontSizeBox.Text = System.Math.Clamp(cfg.CodexFontSize, 10, 24).ToString("0.#");
+        CodexFontStyleBox.SelectedIndex = cfg.CodexFontStyle switch
+        {
+            "Regular" => 1,
+            "Bold" => 2,
+            _ => 0
+        };
         MockCheck.IsChecked = cfg.UseMockData;
         AutoStartCheck.IsChecked = AutoStartService.IsEnabled();
 
@@ -57,6 +66,9 @@ public partial class SettingsWindow : Window
         { System.Windows.MessageBox.Show("阈值不能为负"); return; }
         if (!decimal.TryParse(ChangePercentBox.Text, out decimal pct) || pct < 0 || pct > 100)
         { System.Windows.MessageBox.Show("异常百分比需在 0-100 之间"); return; }
+        if (!double.TryParse(CodexFontSizeBox.Text, out double codexFontSize) ||
+            codexFontSize < 10 || codexFontSize > 24)
+        { System.Windows.MessageBox.Show("额度文字大小需在 10-24 之间"); return; }
 
         // 高峰区间校验：整数小时，Start 0-23、End 1-24（半开区间支持 24），Start < End
         if (!TryParseHour(Peak1StartBox.Text, out int p1s) || p1s < 0 || p1s > 23 ||
@@ -78,7 +90,12 @@ public partial class SettingsWindow : Window
         _cfg.AbnormalChangePercent = pct;
         _cfg.SelectedCurrency = (CurrencyBox.SelectedIndex == 1) ? "USD" : "CNY";
         _cfg.IsAlwaysOnTop = TopmostCheck.IsChecked == true;
+        _cfg.EnableEdgeAutoHide = EdgeAutoHideCheck.IsChecked == true;
         _cfg.UseMiniMode = MiniModeCheck.IsChecked == true;
+        _cfg.EnableCodexMonitoring = EnableCodexCheck.IsChecked == true;
+        _cfg.CodexFontSize = codexFontSize;
+        _cfg.CodexFontStyle = (CodexFontStyleBox.SelectedItem as System.Windows.Controls.ComboBoxItem)
+            ?.Tag?.ToString() ?? "DeepSeek";
         _cfg.UseMockData = MockCheck.IsChecked == true;
         AutoStartService.Set(AutoStartCheck.IsChecked == true);
 
