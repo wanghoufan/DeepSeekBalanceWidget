@@ -22,7 +22,7 @@ public partial class MainWindow : Window
     private readonly AppConfig _cfg;
     private readonly CancellationTokenSource _cts = new();
     private IBalanceProvider _provider;
-    private readonly ICodexUsageProvider _codexUsageProvider;
+    private readonly ICodexAccountsUsageProvider _codexUsageProvider;
     private readonly DispatcherTimer _timer;
     private readonly DispatcherTimer _codexTimer;
     private readonly DispatcherTimer _savePosTimer;
@@ -49,7 +49,7 @@ public partial class MainWindow : Window
         _configService = configService;
         _cfg = cfg;
         _provider = provider;
-        _codexUsageProvider = new CodexAppServerClient();
+        _codexUsageProvider = new CcSwitchCodexUsageProvider();
 
         _savePosTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _savePosTimer.Tick += (_, _) => { _savePosTimer.Stop(); SavePosition(); };
@@ -59,6 +59,7 @@ public partial class MainWindow : Window
 
         Topmost = _cfg.IsAlwaysOnTop;
         UpdatePinButton();
+        UpdateMiniEdgeAutoHideButton();
         ApplySavedPosition();
         ApplyMiniMode(_cfg.UseMiniMode);
         ApplyCodexAppearance();
@@ -162,7 +163,7 @@ public partial class MainWindow : Window
         _isMini = mini;
         Card.Visibility = mini ? Visibility.Collapsed : Visibility.Visible;
         MiniCard.Visibility = mini ? Visibility.Visible : Visibility.Collapsed;
-        Width = mini ? GetMiniModeWidth() : 236;
+        Width = mini ? GetMiniModeWidth() : 306;
         if (IsLoaded)
         {
             if (_dockEdge != DockEdge.None)
@@ -174,9 +175,9 @@ public partial class MainWindow : Window
 
     private double GetMiniModeWidth()
     {
-        if (!_cfg.EnableCodexMonitoring) return 156;
+        if (!_cfg.EnableCodexMonitoring) return 185;
         double extra = Math.Max(0, Math.Clamp(_cfg.CodexFontSize, 10, 24) - 14) * 6;
-        return 205 + extra;
+        return 280 + extra;
     }
 
     private void MiniBtn_Click(object sender, RoutedEventArgs e)
@@ -189,6 +190,7 @@ public partial class MainWindow : Window
     private void MiniCard_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ButtonState != MouseButtonState.Pressed) return;
+        if (IsInsideButton(e.OriginalSource as DependencyObject)) return;
         e.Handled = true;
 
         if (e.ClickCount >= 2)
@@ -200,6 +202,22 @@ public partial class MainWindow : Window
         }
 
         DragWindow();
+    }
+
+    private void UpdateMiniEdgeAutoHideButton()
+    {
+        MiniEdgeAutoHideBtn.Foreground = _cfg.EnableEdgeAutoHide
+            ? new SolidColorBrush(Color.FromRgb(0x4F, 0xC3, 0xF7))
+            : new SolidColorBrush(Color.FromRgb(0x99, 0x99, 0x99));
+        MiniEdgeAutoHideBtn.ToolTip = _cfg.EnableEdgeAutoHide ? "关闭贴边隐藏" : "开启贴边隐藏";
+    }
+
+    private void MiniEdgeAutoHideBtn_Click(object sender, RoutedEventArgs e)
+    {
+        _cfg.EnableEdgeAutoHide = !_cfg.EnableEdgeAutoHide;
+        _configService.Save(_cfg);
+        UpdateMiniEdgeAutoHideButton();
+        EvaluateEdgeAutoHide();
     }
 
     private void UpdatePinButton()
@@ -501,13 +519,13 @@ public partial class MainWindow : Window
         _isCodexRefreshing = true;
         try
         {
-            var usage = await _codexUsageProvider.GetUsageAsync(_cts.Token);
-            ApplyCodexUsage(usage);
+            var usages = await _codexUsageProvider.GetUsagesAsync(_cts.Token);
+            ApplyCodexUsages(usages);
         }
         catch (OperationCanceledException) { }
         catch (Exception)
         {
-            ApplyCodexUsage(CodexUsageSnapshot.Unavailable("Codex 用量读取失败"));
+            ApplyCodexUsages(Array.Empty<CodexAccountUsageSnapshot>());
         }
         finally { _isCodexRefreshing = false; }
     }
@@ -546,36 +564,101 @@ public partial class MainWindow : Window
 
         CodexUsageText.FontFamily = new System.Windows.Media.FontFamily("Segoe UI");
         CodexResetText.FontFamily = CodexUsageText.FontFamily;
+        CodexAccount1Name.FontFamily = CodexUsageText.FontFamily;
+        CodexAccount2Name.FontFamily = CodexUsageText.FontFamily;
+        CodexUsageText2.FontFamily = CodexUsageText.FontFamily;
+        CodexResetText2.FontFamily = CodexUsageText.FontFamily;
         MiniCodexText.FontFamily = CodexUsageText.FontFamily;
         CodexUsageText.FontSize = size;
         CodexResetText.FontSize = Math.Max(10, size - 2);
+        CodexAccount1Name.FontSize = Math.Max(10, size - 3);
+        CodexAccount2Name.FontSize = CodexAccount1Name.FontSize;
+        CodexUsageText2.FontSize = size;
+        CodexResetText2.FontSize = CodexResetText.FontSize;
         MiniCodexText.FontSize = Math.Max(11, size - 1);
         CodexUsageText.FontWeight = weight;
         CodexResetText.FontWeight = weight;
+        CodexUsageText2.FontWeight = weight;
+        CodexResetText2.FontWeight = weight;
         MiniCodexText.FontWeight = weight;
     }
 
-    private void ApplyCodexUsage(CodexUsageSnapshot usage)
+    private void ApplyCodexUsages(IReadOnlyList<CodexAccountUsageSnapshot> usages)
     {
-        if (!usage.IsAvailable || usage.Windows.Count == 0)
+        var accounts = usages.Take(2).ToArray();
+        if (accounts.Length == 0)
         {
-            CodexUsageText.Text = "ChatGPT Plus · 暂不可用";
+            CodexAccount1Panel.Visibility = Visibility.Visible;
+            CodexAccount1Name.Text = "ChatGPT 账号";
+            CodexAccount1Name.Foreground = new SolidColorBrush(Colors.Orange);
+            CodexUsageText.Text = "暂不可用";
             CodexUsageText.Foreground = new SolidColorBrush(Colors.Orange);
-            CodexResetText.Text = usage.Error ?? "未返回 Codex 用量窗口";
-            MiniCodexText.Text = "C --";
+            CodexResetText.Text = "无法读取 CC Switch 账号额度";
+            CodexAccountDivider.Visibility = Visibility.Collapsed;
+            CodexAccount2Panel.Visibility = Visibility.Collapsed;
+            MiniCodexText.Text = "M --  W --";
             MiniCodexText.ToolTip = CodexResetText.Text;
             return;
         }
 
-        CodexUsageText.Foreground = new SolidColorBrush(Color.FromRgb(0xBF, 0xDF, 0xFF));
-        CodexUsageText.Text = CodexUsageFormatter.FormatPlan(usage.PlanType)
-            + " · "
-            + string.Join(" · ", usage.Windows.Select(CodexUsageFormatter.FormatWindow));
-        CodexResetText.Text = string.Join(" · ", usage.Windows.Select(CodexUsageFormatter.FormatReset));
+        ApplyCodexAccount(accounts[0], CodexAccount1Name, CodexUsageText, CodexResetText);
+        bool hasSecond = accounts.Length > 1;
+        CodexAccountDivider.Visibility = hasSecond ? Visibility.Visible : Visibility.Collapsed;
+        CodexAccount2Panel.Visibility = hasSecond ? Visibility.Visible : Visibility.Collapsed;
+        if (hasSecond)
+            ApplyCodexAccount(accounts[1], CodexAccount2Name, CodexUsageText2, CodexResetText2);
 
-        int remaining = usage.Windows.Min(window => window.RemainingPercent);
-        MiniCodexText.Text = $"C {remaining}%";
-        MiniCodexText.ToolTip = CodexUsageText.Text + Environment.NewLine + CodexResetText.Text;
+        MiniCodexText.Text = string.Join("  ", accounts.Select(FormatMiniAccount));
+        MiniCodexText.Foreground = accounts.Any(account => account.IsStale)
+            ? new SolidColorBrush(Colors.Orange)
+            : new SolidColorBrush(Color.FromRgb(0xBF, 0xDF, 0xFF));
+        MiniCodexText.ToolTip = string.Join(
+            Environment.NewLine + Environment.NewLine,
+            accounts.Select(FormatAccountToolTip));
+    }
+
+    private static void ApplyCodexAccount(
+        CodexAccountUsageSnapshot account,
+        System.Windows.Controls.TextBlock nameText,
+        System.Windows.Controls.TextBlock usageText,
+        System.Windows.Controls.TextBlock resetText)
+    {
+        nameText.Text = account.Email + (account.IsStale ? " · 数据已过期" : "");
+        nameText.ToolTip = account.Email;
+        nameText.Foreground = account.IsStale
+            ? new SolidColorBrush(Colors.Orange)
+            : new SolidColorBrush(Color.FromRgb(0xDD, 0xEB, 0xFF));
+
+        if (!account.Usage.IsAvailable || account.Usage.Windows.Count == 0)
+        {
+            usageText.Text = "暂不可用";
+            usageText.Foreground = new SolidColorBrush(Colors.Orange);
+            resetText.Text = account.RefreshError ?? account.Usage.Error ?? "未返回额度窗口";
+            return;
+        }
+
+        usageText.Text = string.Join(" · ", account.Usage.Windows.Select(CodexUsageFormatter.FormatWindow));
+        usageText.Foreground = account.IsStale
+            ? new SolidColorBrush(Colors.Orange)
+            : new SolidColorBrush(Color.FromRgb(0xBF, 0xDF, 0xFF));
+        resetText.Text = string.Join(" · ", account.Usage.Windows.Select(CodexUsageFormatter.FormatReset));
+    }
+
+    private static string FormatMiniAccount(CodexAccountUsageSnapshot account)
+    {
+        if (!account.Usage.IsAvailable || account.Usage.Windows.Count == 0)
+            return $"{account.MiniLabel} --";
+        int remaining = account.Usage.Windows.Min(window => window.RemainingPercent);
+        return $"{account.MiniLabel} {remaining}%{(account.IsStale ? "*" : "")}";
+    }
+
+    private static string FormatAccountToolTip(CodexAccountUsageSnapshot account)
+    {
+        string status = account.Usage.IsAvailable && account.Usage.Windows.Count > 0
+            ? string.Join(" · ", account.Usage.Windows.Select(CodexUsageFormatter.FormatWindow))
+            : account.RefreshError ?? account.Usage.Error ?? "暂不可用";
+        string stale = account.IsStale ? Environment.NewLine + "数据已过期" : string.Empty;
+        return account.Email + Environment.NewLine + status + stale;
     }
 
     private void RefreshPeakStatus()

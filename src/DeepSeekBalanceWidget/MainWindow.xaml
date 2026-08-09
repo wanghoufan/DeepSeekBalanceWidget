@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize"
-        WindowStartupLocation="Manual" Width="236" SizeToContent="Height"
+        WindowStartupLocation="Manual" Width="306" SizeToContent="Height"
         MouseLeftButtonDown="Window_MouseLeftButtonDown"
         MouseEnter="Window_MouseEnter"
         MouseLeave="Window_MouseLeave"
@@ -93,12 +93,29 @@
                    FontSize="11" Foreground="#C8C8C8" Margin="0,0,0,5"/>
         <StackPanel x:Name="CodexPanel">
           <Border Height="1" Background="#20FFFFFF" Margin="0,2,0,7"/>
-          <TextBlock x:Name="CodexUsageText" Text="Codex · 正在读取..."
+          <StackPanel x:Name="CodexAccount1Panel">
+            <TextBlock x:Name="CodexAccount1Name" Text="ChatGPT 账号"
+                       FontSize="11" Foreground="#DDEBFF" FontFamily="Segoe UI"
+                       TextWrapping="Wrap" Margin="0,0,0,2"/>
+            <TextBlock x:Name="CodexUsageText" Text="正在读取额度..."
                      FontSize="14" FontWeight="SemiBold" Foreground="#BFDFFF"
                      FontFamily="Segoe UI" TextWrapping="Wrap" Margin="0,0,0,3"/>
-          <TextBlock x:Name="CodexResetText" Text="--"
+            <TextBlock x:Name="CodexResetText" Text="--"
                      FontSize="12" FontWeight="SemiBold" Foreground="#8F99A6"
-                     FontFamily="Segoe UI" TextWrapping="Wrap" Margin="0,0,0,7"/>
+                     FontFamily="Segoe UI" TextWrapping="Wrap"/>
+          </StackPanel>
+          <Border x:Name="CodexAccountDivider" Height="1" Background="#18FFFFFF" Margin="0,7,0,7"/>
+          <StackPanel x:Name="CodexAccount2Panel">
+            <TextBlock x:Name="CodexAccount2Name" Text="ChatGPT 账号"
+                       FontSize="11" Foreground="#DDEBFF" FontFamily="Segoe UI"
+                       TextWrapping="Wrap" Margin="0,0,0,2"/>
+            <TextBlock x:Name="CodexUsageText2" Text="正在读取额度..."
+                       FontSize="14" FontWeight="SemiBold" Foreground="#BFDFFF"
+                       FontFamily="Segoe UI" TextWrapping="Wrap" Margin="0,0,0,3"/>
+            <TextBlock x:Name="CodexResetText2" Text="--"
+                       FontSize="12" FontWeight="SemiBold" Foreground="#8F99A6"
+                       FontFamily="Segoe UI" TextWrapping="Wrap" Margin="0,0,0,7"/>
+          </StackPanel>
         </StackPanel>
         <Grid>
           <TextBlock x:Name="RefreshTimeText" Text="上次刷新：--" FontSize="9"
@@ -128,11 +145,13 @@
                    FontWeight="SemiBold" Foreground="#F0F7FF" FontFamily="Segoe UI"/>
         <TextBlock x:Name="MiniChangeText" Text="--" FontSize="12" Foreground="#D0D0D0"
                    Margin="8,0,0,0" VerticalAlignment="Center"/>
-        <TextBlock x:Name="MiniCodexText" Text="C --" FontSize="13"
+        <TextBlock x:Name="MiniCodexText" Text="M --  W --" FontSize="13"
                    FontWeight="SemiBold" FontFamily="Segoe UI" Foreground="#BFDFFF"
                    Margin="8,0,0,0" VerticalAlignment="Center"/>
         <TextBlock x:Name="MiniPeakDot" Text="●" FontSize="9" Margin="8,0,0,0"
                    VerticalAlignment="Center" Foreground="#4CC94C"/>
+        <Button x:Name="MiniEdgeAutoHideBtn" Style="{StaticResource TitleBtn}" Content="&#xE72E;"
+                Margin="7,0,0,0" ToolTip="开启贴边隐藏" Click="MiniEdgeAutoHideBtn_Click"/>
       </StackPanel>
     </Border>
   </Grid>
