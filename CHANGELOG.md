@@ -2,6 +2,21 @@
 
 本项目遵循语义化版本号。
 
+## 0.3.0 — 2026-08-15
+
+### 功能
+
+- 新增 macOS 双平台支持：基于 Avalonia 的原生 `.app` 菜单栏应用，支持 Apple Silicon（M 系列）与 Intel Mac
+- macOS 版菜单栏实时显示 DeepSeek 余额、ChatGPT Plus 用量百分比和北京时间峰值时段
+- macOS 版 API Key 保存到登录钥匙串，支持登录时自动启动
+- 新增 macOS 一键发布与安装脚本（`scripts/publish-macos.sh`、`scripts/install-macos.sh`）
+- 新增本机 Codex 用量消耗速率追踪（`CodexConsumptionRateTracker`）
+- GitHub Releases 同时发布 Windows 与 macOS（arm64/x64）安装包
+
+### 工程化
+
+- CI 增加 macOS 构建验证；Release 工作流扩展为双平台矩阵构建
+
 ## 0.2.0 — 2026-08-06
 
 ### 功能

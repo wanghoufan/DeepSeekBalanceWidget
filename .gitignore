@@ -4,6 +4,10 @@
 release/
 release-*/
 artifacts/runtime/
+/*.exe
+/*.app
+/*.zip
+/*.dmg
 
 # IDE and user-local settings
 .vs/
