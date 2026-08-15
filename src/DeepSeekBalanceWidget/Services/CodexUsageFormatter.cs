@@ -18,6 +18,16 @@ public static class CodexUsageFormatter
             ? "重置时间未知"
             : window.ResetsAt.Value.ToLocalTime().ToString("MM-dd HH:mm") + " 重置";
 
+    public static string FormatCountdown(DateTimeOffset? resetsAt, DateTimeOffset now)
+    {
+        if (resetsAt is null) return "--";
+        TimeSpan remaining = resetsAt.Value - now;
+        if (remaining <= TimeSpan.Zero) return "即将重置";
+        if (remaining.Days > 0) return $"{remaining.Days} 天 {remaining.Hours} 小时";
+        if (remaining.Hours > 0) return $"{remaining.Hours} 小时 {remaining.Minutes} 分钟";
+        return $"{Math.Max(1, (int)Math.Ceiling(remaining.TotalMinutes))} 分钟";
+    }
+
     public static string FormatDuration(int? minutes) => minutes switch
     {
         300 => "5 小时",

@@ -106,6 +106,30 @@ public class CodexUsageParserTests
     }
 
     [Theory]
+    [InlineData(6, 18, 30, "6 天 18 小时")]
+    [InlineData(0, 8, 25, "8 小时 25 分钟")]
+    [InlineData(0, 0, 12, "12 分钟")]
+    public void FormatCountdown_ShowsRemainingDaysAndHours(
+        int days, int hours, int minutes, string expected)
+    {
+        var now = new DateTimeOffset(2026, 8, 9, 12, 0, 0, TimeSpan.FromHours(8));
+
+        string result = CodexUsageFormatter.FormatCountdown(
+            now.AddDays(days).AddHours(hours).AddMinutes(minutes), now);
+
+        Assert.Equal(expected, result);
+    }
+
+    [Fact]
+    public void FormatCountdown_WhenResetPassed_ShowsImminentReset()
+    {
+        var now = new DateTimeOffset(2026, 8, 9, 12, 0, 0, TimeSpan.FromHours(8));
+
+        Assert.Equal("即将重置", CodexUsageFormatter.FormatCountdown(now.AddSeconds(-1), now));
+        Assert.Equal("--", CodexUsageFormatter.FormatCountdown(null, now));
+    }
+
+    [Theory]
     [InlineData(300, "5 小时")]
     [InlineData(10080, "每周")]
     [InlineData(120, "2 小时")]

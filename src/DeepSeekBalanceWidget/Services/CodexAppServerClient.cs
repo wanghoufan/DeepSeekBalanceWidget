@@ -114,10 +114,25 @@ public sealed class CodexAppServerClient : ICodexUsageProvider
         if (!string.IsNullOrWhiteSpace(configured))
             return configured;
 
-        string localPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Programs", "OpenAI", "Codex", "bin", "codex.exe");
-        return File.Exists(localPath) ? localPath : "codex.exe";
+        if (OperatingSystem.IsWindows())
+        {
+            string localPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Programs", "OpenAI", "Codex", "bin", "codex.exe");
+            return File.Exists(localPath) ? localPath : "codex.exe";
+        }
+
+        // Finder-launched macOS apps do not inherit the user's interactive PATH.
+        // Check the common CLI installation locations before falling back to PATH.
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        string[] candidates =
+        {
+            Path.Combine(home, ".local", "bin", "codex"),
+            Path.Combine(home, ".cargo", "bin", "codex"),
+            "/opt/homebrew/bin/codex",
+            "/usr/local/bin/codex"
+        };
+        return candidates.FirstOrDefault(File.Exists) ?? "codex";
     }
 
     private static async Task WriteAsync(

@@ -97,24 +97,46 @@
             <TextBlock x:Name="CodexAccount1Name" Text="ChatGPT 账号"
                        FontSize="11" Foreground="#DDEBFF" FontFamily="Segoe UI"
                        TextWrapping="Wrap" Margin="0,0,0,2"/>
-            <TextBlock x:Name="CodexUsageText" Text="正在读取额度..."
-                     FontSize="14" FontWeight="SemiBold" Foreground="#BFDFFF"
-                     FontFamily="Segoe UI" TextWrapping="Wrap" Margin="0,0,0,3"/>
-            <TextBlock x:Name="CodexResetText" Text="--"
-                     FontSize="12" FontWeight="SemiBold" Foreground="#8F99A6"
-                     FontFamily="Segoe UI" TextWrapping="Wrap"/>
+            <Grid>
+              <StackPanel Margin="0,0,92,0">
+                <TextBlock x:Name="CodexUsageText" Text="正在读取额度..."
+                           FontSize="14" FontWeight="SemiBold" Foreground="#BFDFFF"
+                           FontFamily="Segoe UI" TextWrapping="Wrap" Margin="0,0,0,3"/>
+                <TextBlock x:Name="CodexResetText" Text="--"
+                           FontSize="12" FontWeight="SemiBold" Foreground="#8F99A6"
+                           FontFamily="Segoe UI" TextWrapping="Wrap"/>
+              </StackPanel>
+              <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center">
+                <TextBlock Text="距重置" FontSize="9" Foreground="#75808D"
+                           HorizontalAlignment="Right"/>
+                <TextBlock x:Name="CodexCountdownText" Text="--"
+                           FontSize="12" FontWeight="SemiBold" Foreground="#AFC9E8"
+                           FontFamily="Segoe UI" HorizontalAlignment="Right"/>
+              </StackPanel>
+            </Grid>
           </StackPanel>
           <Border x:Name="CodexAccountDivider" Height="1" Background="#18FFFFFF" Margin="0,7,0,7"/>
           <StackPanel x:Name="CodexAccount2Panel">
             <TextBlock x:Name="CodexAccount2Name" Text="ChatGPT 账号"
                        FontSize="11" Foreground="#DDEBFF" FontFamily="Segoe UI"
                        TextWrapping="Wrap" Margin="0,0,0,2"/>
-            <TextBlock x:Name="CodexUsageText2" Text="正在读取额度..."
-                       FontSize="14" FontWeight="SemiBold" Foreground="#BFDFFF"
-                       FontFamily="Segoe UI" TextWrapping="Wrap" Margin="0,0,0,3"/>
-            <TextBlock x:Name="CodexResetText2" Text="--"
-                       FontSize="12" FontWeight="SemiBold" Foreground="#8F99A6"
-                       FontFamily="Segoe UI" TextWrapping="Wrap" Margin="0,0,0,7"/>
+            <Grid Margin="0,0,0,7">
+              <StackPanel Margin="0,0,92,0">
+                <TextBlock x:Name="CodexUsageText2" Text="正在读取额度..."
+                           FontSize="14" FontWeight="SemiBold" Foreground="#BFDFFF"
+                           FontFamily="Segoe UI" TextWrapping="Wrap" Margin="0,0,0,3"/>
+                <TextBlock x:Name="CodexResetText2" Text="--"
+                           FontSize="12" FontWeight="SemiBold" Foreground="#8F99A6"
+                           FontFamily="Segoe UI" TextWrapping="Wrap"/>
+              </StackPanel>
+              <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center">
+                <TextBlock Text="距重置" FontSize="9" Foreground="#75808D"
+                           HorizontalAlignment="Right"/>
+                <TextBlock x:Name="CodexCountdownText2" Text="--"
+                           FontSize="12" FontWeight="SemiBold" Foreground="#AFC9E8"
+                           FontFamily="Segoe UI" HorizontalAlignment="Right"/>
+              </StackPanel>
+            </Grid>
           </StackPanel>
         </StackPanel>
         <Grid>

@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using Color = System.Windows.Media.Color;
 using System.Windows.Threading;
 using DeepSeekBalanceWidget.Models;
@@ -23,6 +24,7 @@ public partial class MainWindow : Window
     private readonly CancellationTokenSource _cts = new();
     private IBalanceProvider _provider;
     private readonly ICodexAccountsUsageProvider _codexUsageProvider;
+    private readonly CodexConsumptionRateTracker _codexConsumptionTracker = new();
     private readonly DispatcherTimer _timer;
     private readonly DispatcherTimer _codexTimer;
     private readonly DispatcherTimer _savePosTimer;
@@ -568,6 +570,8 @@ public partial class MainWindow : Window
         CodexAccount2Name.FontFamily = CodexUsageText.FontFamily;
         CodexUsageText2.FontFamily = CodexUsageText.FontFamily;
         CodexResetText2.FontFamily = CodexUsageText.FontFamily;
+        CodexCountdownText.FontFamily = CodexUsageText.FontFamily;
+        CodexCountdownText2.FontFamily = CodexUsageText.FontFamily;
         MiniCodexText.FontFamily = CodexUsageText.FontFamily;
         CodexUsageText.FontSize = size;
         CodexResetText.FontSize = Math.Max(10, size - 2);
@@ -575,11 +579,15 @@ public partial class MainWindow : Window
         CodexAccount2Name.FontSize = CodexAccount1Name.FontSize;
         CodexUsageText2.FontSize = size;
         CodexResetText2.FontSize = CodexResetText.FontSize;
+        CodexCountdownText.FontSize = CodexResetText.FontSize;
+        CodexCountdownText2.FontSize = CodexResetText.FontSize;
         MiniCodexText.FontSize = Math.Max(11, size - 1);
         CodexUsageText.FontWeight = weight;
         CodexResetText.FontWeight = weight;
         CodexUsageText2.FontWeight = weight;
         CodexResetText2.FontWeight = weight;
+        CodexCountdownText.FontWeight = weight;
+        CodexCountdownText2.FontWeight = weight;
         MiniCodexText.FontWeight = weight;
     }
 
@@ -592,36 +600,41 @@ public partial class MainWindow : Window
             CodexAccount1Name.Text = "ChatGPT 账号";
             CodexAccount1Name.Foreground = new SolidColorBrush(Colors.Orange);
             CodexUsageText.Text = "暂不可用";
-            CodexUsageText.Foreground = new SolidColorBrush(Colors.Orange);
+            ApplyConsumptionAlert(CodexUsageText, ConsumptionAlertLevel.Normal, isStale: true);
             CodexResetText.Text = "无法读取 CC Switch 账号额度";
             CodexAccountDivider.Visibility = Visibility.Collapsed;
             CodexAccount2Panel.Visibility = Visibility.Collapsed;
             MiniCodexText.Text = "M --  W --";
+            ApplyConsumptionAlert(MiniCodexText, ConsumptionAlertLevel.Normal, isStale: true);
             MiniCodexText.ToolTip = CodexResetText.Text;
             return;
         }
 
-        ApplyCodexAccount(accounts[0], CodexAccount1Name, CodexUsageText, CodexResetText);
+        ConsumptionRateResult firstRate = ApplyCodexAccount(
+            accounts[0], CodexAccount1Name, CodexUsageText, CodexResetText, CodexCountdownText);
+        var rates = new List<ConsumptionRateResult> { firstRate };
         bool hasSecond = accounts.Length > 1;
         CodexAccountDivider.Visibility = hasSecond ? Visibility.Visible : Visibility.Collapsed;
         CodexAccount2Panel.Visibility = hasSecond ? Visibility.Visible : Visibility.Collapsed;
         if (hasSecond)
-            ApplyCodexAccount(accounts[1], CodexAccount2Name, CodexUsageText2, CodexResetText2);
+            rates.Add(ApplyCodexAccount(
+                accounts[1], CodexAccount2Name, CodexUsageText2, CodexResetText2,
+                CodexCountdownText2));
 
         MiniCodexText.Text = string.Join("  ", accounts.Select(FormatMiniAccount));
-        MiniCodexText.Foreground = accounts.Any(account => account.IsStale)
-            ? new SolidColorBrush(Colors.Orange)
-            : new SolidColorBrush(Color.FromRgb(0xBF, 0xDF, 0xFF));
+        ConsumptionAlertLevel miniLevel = rates.Max(rate => rate.Level);
+        ApplyConsumptionAlert(MiniCodexText, miniLevel, accounts.Any(account => account.IsStale));
         MiniCodexText.ToolTip = string.Join(
             Environment.NewLine + Environment.NewLine,
             accounts.Select(FormatAccountToolTip));
     }
 
-    private static void ApplyCodexAccount(
+    private ConsumptionRateResult ApplyCodexAccount(
         CodexAccountUsageSnapshot account,
         System.Windows.Controls.TextBlock nameText,
         System.Windows.Controls.TextBlock usageText,
-        System.Windows.Controls.TextBlock resetText)
+        System.Windows.Controls.TextBlock resetText,
+        System.Windows.Controls.TextBlock countdownText)
     {
         nameText.Text = account.Email + (account.IsStale ? " · 数据已过期" : "");
         nameText.ToolTip = account.Email;
@@ -632,16 +645,57 @@ public partial class MainWindow : Window
         if (!account.Usage.IsAvailable || account.Usage.Windows.Count == 0)
         {
             usageText.Text = "暂不可用";
-            usageText.Foreground = new SolidColorBrush(Colors.Orange);
+            ApplyConsumptionAlert(usageText, ConsumptionAlertLevel.Normal, isStale: true);
             resetText.Text = account.RefreshError ?? account.Usage.Error ?? "未返回额度窗口";
-            return;
+            countdownText.Text = "--";
+            return new ConsumptionRateResult(ConsumptionAlertLevel.Normal, 0, 0);
         }
 
         usageText.Text = string.Join(" · ", account.Usage.Windows.Select(CodexUsageFormatter.FormatWindow));
-        usageText.Foreground = account.IsStale
-            ? new SolidColorBrush(Colors.Orange)
-            : new SolidColorBrush(Color.FromRgb(0xBF, 0xDF, 0xFF));
+        ConsumptionRateResult rate = account.IsStale
+            ? new ConsumptionRateResult(ConsumptionAlertLevel.Normal, 0, 0)
+            : _codexConsumptionTracker.Observe(
+                account.AccountId,
+                account.Usage.Windows.Min(window => window.RemainingPercent),
+                DateTimeOffset.UtcNow);
+        ApplyConsumptionAlert(usageText, rate.Level, account.IsStale);
+        usageText.ToolTip = $"近 5 分钟消耗 {rate.FiveMinuteConsumption}% · 近 1 分钟消耗 {rate.OneMinuteConsumption}%";
         resetText.Text = string.Join(" · ", account.Usage.Windows.Select(CodexUsageFormatter.FormatReset));
+        DateTimeOffset? nextReset = account.Usage.Windows
+            .Where(window => window.ResetsAt is not null)
+            .MinBy(window => window.ResetsAt)?.ResetsAt;
+        countdownText.Text = CodexUsageFormatter.FormatCountdown(nextReset, DateTimeOffset.Now);
+        return rate;
+    }
+
+    private static void ApplyConsumptionAlert(
+        System.Windows.Controls.TextBlock text,
+        ConsumptionAlertLevel level,
+        bool isStale)
+    {
+        text.BeginAnimation(OpacityProperty, null);
+        text.Opacity = 1;
+
+        if (level == ConsumptionAlertLevel.Critical)
+        {
+            text.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x5A, 0x5F));
+            text.BeginAnimation(OpacityProperty, new DoubleAnimation
+            {
+                From = 1,
+                To = 0.35,
+                Duration = TimeSpan.FromSeconds(1),
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever
+            });
+        }
+        else if (level == ConsumptionAlertLevel.Warning || isStale)
+        {
+            text.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xB3, 0x47));
+        }
+        else
+        {
+            text.Foreground = new SolidColorBrush(Color.FromRgb(0xBF, 0xDF, 0xFF));
+        }
     }
 
     private static string FormatMiniAccount(CodexAccountUsageSnapshot account)
