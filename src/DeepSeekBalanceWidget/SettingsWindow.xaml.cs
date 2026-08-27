@@ -9,12 +9,18 @@ public partial class SettingsWindow : Window
 {
     private readonly ConfigService _configService;
     private readonly AppConfig _cfg;
+    private readonly List<string> _agentOrder = new();
 
     public SettingsWindow(ConfigService configService, AppConfig cfg)
     {
         InitializeComponent();
         _configService = configService;
         _cfg = cfg;
+
+        _agentOrder.AddRange(cfg.AgentOrder is { Count: > 0 }
+            ? cfg.AgentOrder
+            : new List<string> { "deepseek", "chatgpt", "workbuddy" });
+        RefreshAgentOrderList();
 
         ApiKeyBox.Password = configService.GetApiKey() ?? "";
         IntervalBox.Text = cfg.RefreshIntervalSeconds.ToString();
@@ -56,6 +62,38 @@ public partial class SettingsWindow : Window
     {
         ApiKeyBox.Password = "";
         _configService.SetApiKey(_cfg, null);
+    }
+
+    private static string AgentDisplayName(string kind) => kind switch
+    {
+        "deepseek" => "DeepSeek 余额",
+        "chatgpt" => "ChatGPT 额度",
+        "workbuddy" => "WorkBuddy",
+        "te" => "tE 积分",
+        _ => kind
+    };
+
+    private void RefreshAgentOrderList()
+    {
+        AgentOrderBox.ItemsSource = _agentOrder.Select(AgentDisplayName).ToList();
+    }
+
+    private void AgentOrderUp_Click(object sender, RoutedEventArgs e)
+    {
+        int index = AgentOrderBox.SelectedIndex;
+        if (index <= 0) return;
+        (_agentOrder[index - 1], _agentOrder[index]) = (_agentOrder[index], _agentOrder[index - 1]);
+        RefreshAgentOrderList();
+        AgentOrderBox.SelectedIndex = index - 1;
+    }
+
+    private void AgentOrderDown_Click(object sender, RoutedEventArgs e)
+    {
+        int index = AgentOrderBox.SelectedIndex;
+        if (index < 0 || index >= _agentOrder.Count - 1) return;
+        (_agentOrder[index + 1], _agentOrder[index]) = (_agentOrder[index], _agentOrder[index + 1]);
+        RefreshAgentOrderList();
+        AgentOrderBox.SelectedIndex = index + 1;
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)
@@ -102,6 +140,7 @@ public partial class SettingsWindow : Window
         _cfg.PeakHourRanges = new List<PeakRange> { new(p1s, p1e), new(p2s, p2e) };
         _cfg.ShowPeakIndicator = ShowPeakCheck.IsChecked == true;
         _cfg.DefaultCorner = (CornerBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString() ?? "Remember";
+        _cfg.AgentOrder = new List<string>(_agentOrder);
 
         _configService.Save(_cfg);
         DialogResult = true;

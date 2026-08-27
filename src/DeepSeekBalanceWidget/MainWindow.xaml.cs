@@ -165,7 +165,7 @@ public partial class MainWindow : Window
         _isMini = mini;
         Card.Visibility = mini ? Visibility.Collapsed : Visibility.Visible;
         MiniCard.Visibility = mini ? Visibility.Visible : Visibility.Collapsed;
-        Width = mini ? GetMiniModeWidth() : 306;
+        Width = mini ? GetMiniModeWidth() : 420;
         if (IsLoaded)
         {
             if (_dockEdge != DockEdge.None)
@@ -173,13 +173,63 @@ public partial class MainWindow : Window
             else
                 ClampToWorkArea(); // 尺寸变化后只做边界 Clamp，不强制回角落
         }
+        RearrangeMiniBlocks();
     }
 
     private double GetMiniModeWidth()
     {
-        if (!_cfg.EnableCodexMonitoring) return 185;
-        double extra = Math.Max(0, Math.Clamp(_cfg.CodexFontSize, 10, 24) - 14) * 6;
-        return 280 + extra;
+        double width = 16; // 左右内边距
+        foreach (string kind in _cfg.AgentOrder)
+        {
+            switch (kind)
+            {
+                case "deepseek":
+                    width += 82; // DS 标签 + 余额 + 间距
+                    break;
+                case "chatgpt":
+                    if (_cfg.EnableCodexMonitoring)
+                        width += 292; // GPT 表格容器（22+50+66+50+74 + 内边距）
+                    break;
+                case "workbuddy":
+                    width += 72; // WB 占位
+                    break;
+            }
+            width += 10; // 区块间距
+        }
+        width += 96; // 贴边/最小化/关闭三按钮 + 间距
+        return Math.Clamp(width, 120, 800);
+    }
+
+    /// <summary>按 _cfg.AgentOrder 重排胶囊区块（贴边按钮固定最右），DS/WB 单行区块垂直居中。</summary>
+    private void RearrangeMiniBlocks()
+    {
+        var order = _cfg.AgentOrder ?? new List<string>();
+        var blocks = new Dictionary<string, UIElement>
+        {
+            ["deepseek"] = MiniDeepSeekBlock,
+            ["chatgpt"] = MiniGptBlock,
+            ["workbuddy"] = MiniWorkbuddyBlock
+        };
+
+        int index = 0;
+        foreach (string kind in order)
+        {
+            if (!blocks.TryGetValue(kind, out var block)) continue;
+            if (index >= MiniRowPanel.Children.Count
+                || !ReferenceEquals(MiniRowPanel.Children[index], block))
+            {
+                MiniRowPanel.Children.Remove(block);
+                MiniRowPanel.Children.Insert(Math.Min(index, MiniRowPanel.Children.Count), block);
+            }
+            index++;
+        }
+
+        // 贴边 / 最小化 / 关闭三按钮固定最右（顺序固定）
+        foreach (var btn in new[] { MiniEdgeAutoHideBtn, MiniMinBtn, MiniCloseBtn })
+        {
+            MiniRowPanel.Children.Remove(btn);
+            MiniRowPanel.Children.Add(btn);
+        }
     }
 
     private void MiniBtn_Click(object sender, RoutedEventArgs e)
@@ -220,6 +270,19 @@ public partial class MainWindow : Window
         _configService.Save(_cfg);
         UpdateMiniEdgeAutoHideButton();
         EvaluateEdgeAutoHide();
+    }
+
+    private void MiniMinBtn_Click(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState.Minimized;
+    }
+
+    private void MiniCloseBtn_Click(object sender, RoutedEventArgs e)
+    {
+        var result = System.Windows.MessageBox.Show(this,
+            "确定退出 DeepSeek 余额监控吗？", "退出确认",
+            MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (result == MessageBoxResult.Yes) ExitApp();
     }
 
     private void UpdatePinButton()
@@ -551,7 +614,7 @@ public partial class MainWindow : Window
     {
         var visibility = _cfg.EnableCodexMonitoring ? Visibility.Visible : Visibility.Collapsed;
         CodexPanel.Visibility = visibility;
-        MiniCodexText.Visibility = visibility;
+        MiniGptBlock.Visibility = visibility;
     }
 
     private void ApplyCodexAppearance()
@@ -564,31 +627,47 @@ public partial class MainWindow : Window
             _ => FontWeights.SemiBold
         };
 
-        CodexUsageText.FontFamily = new System.Windows.Media.FontFamily("Segoe UI");
-        CodexResetText.FontFamily = CodexUsageText.FontFamily;
-        CodexAccount1Name.FontFamily = CodexUsageText.FontFamily;
-        CodexAccount2Name.FontFamily = CodexUsageText.FontFamily;
-        CodexUsageText2.FontFamily = CodexUsageText.FontFamily;
-        CodexResetText2.FontFamily = CodexUsageText.FontFamily;
-        CodexCountdownText.FontFamily = CodexUsageText.FontFamily;
-        CodexCountdownText2.FontFamily = CodexUsageText.FontFamily;
-        MiniCodexText.FontFamily = CodexUsageText.FontFamily;
-        CodexUsageText.FontSize = size;
-        CodexResetText.FontSize = Math.Max(10, size - 2);
-        CodexAccount1Name.FontSize = Math.Max(10, size - 3);
+        var font = new System.Windows.Media.FontFamily("Segoe UI");
+        foreach (var text in new[]
+        {
+            CodexAccount1Name, CodexAccount2Name,
+            CodexFiveText, CodexFiveResetText, CodexWeeklyText, CodexWeeklyResetText,
+            CodexFiveText2, CodexFiveResetText2, CodexWeeklyText2, CodexWeeklyResetText2,
+            MiniDsLabel, MiniBalanceText, MiniPeakLabel,
+            MiniGptA1Label, MiniGptA1Five, MiniGptA1FiveCd, MiniGptA1Weekly, MiniGptA1WeeklyCd,
+            MiniGptA2Label, MiniGptA2Five, MiniGptA2FiveCd, MiniGptA2Weekly, MiniGptA2WeeklyCd,
+            MiniWorkbuddyBlock
+        })
+        {
+            text.FontFamily = font;
+            text.FontWeight = weight;
+        }
+
+        CodexAccount1Name.FontSize = Math.Max(11, size - 1);
         CodexAccount2Name.FontSize = CodexAccount1Name.FontSize;
-        CodexUsageText2.FontSize = size;
-        CodexResetText2.FontSize = CodexResetText.FontSize;
-        CodexCountdownText.FontSize = CodexResetText.FontSize;
-        CodexCountdownText2.FontSize = CodexResetText.FontSize;
-        MiniCodexText.FontSize = Math.Max(11, size - 1);
-        CodexUsageText.FontWeight = weight;
-        CodexResetText.FontWeight = weight;
-        CodexUsageText2.FontWeight = weight;
-        CodexResetText2.FontWeight = weight;
-        CodexCountdownText.FontWeight = weight;
-        CodexCountdownText2.FontWeight = weight;
-        MiniCodexText.FontWeight = weight;
+        CodexFiveText.FontSize = size + 2;
+        CodexWeeklyText.FontSize = size + 2;
+        CodexFiveResetText.FontSize = Math.Max(11, size - 1);
+        CodexWeeklyResetText.FontSize = CodexFiveResetText.FontSize;
+        CodexFiveText2.FontSize = size + 2;
+        CodexWeeklyText2.FontSize = size + 2;
+        CodexFiveResetText2.FontSize = CodexFiveResetText.FontSize;
+        CodexWeeklyResetText2.FontSize = CodexFiveResetText.FontSize;
+
+        MiniDsLabel.FontSize = Math.Max(11, size - 1);
+        MiniBalanceText.FontSize = Math.Max(12, size);
+        MiniPeakLabel.FontSize = Math.Max(10, size - 3);
+        MiniGptA1Label.FontSize = Math.Max(10, size - 2);
+        MiniGptA2Label.FontSize = MiniGptA1Label.FontSize;
+        MiniGptA1Five.FontSize = Math.Max(10, size - 2);
+        MiniGptA2Five.FontSize = MiniGptA1Five.FontSize;
+        MiniGptA1Weekly.FontSize = MiniGptA1Five.FontSize;
+        MiniGptA2Weekly.FontSize = MiniGptA1Five.FontSize;
+        MiniGptA1FiveCd.FontSize = Math.Max(10, size - 3);
+        MiniGptA2FiveCd.FontSize = MiniGptA1FiveCd.FontSize;
+        MiniGptA1WeeklyCd.FontSize = MiniGptA1FiveCd.FontSize;
+        MiniGptA2WeeklyCd.FontSize = MiniGptA1FiveCd.FontSize;
+        MiniWorkbuddyBlock.FontSize = Math.Max(11, size - 1);
     }
 
     private void ApplyCodexUsages(IReadOnlyList<CodexAccountUsageSnapshot> usages)
@@ -596,77 +675,152 @@ public partial class MainWindow : Window
         var accounts = usages.Take(2).ToArray();
         if (accounts.Length == 0)
         {
-            CodexAccount1Panel.Visibility = Visibility.Visible;
+            CodexAccount1Row.Visibility = Visibility.Visible;
             CodexAccount1Name.Text = "ChatGPT 账号";
             CodexAccount1Name.Foreground = new SolidColorBrush(Colors.Orange);
-            CodexUsageText.Text = "暂不可用";
-            ApplyConsumptionAlert(CodexUsageText, ConsumptionAlertLevel.Normal, isStale: true);
-            CodexResetText.Text = "无法读取 CC Switch 账号额度";
-            CodexAccountDivider.Visibility = Visibility.Collapsed;
-            CodexAccount2Panel.Visibility = Visibility.Collapsed;
-            MiniCodexText.Text = "M --  W --";
-            ApplyConsumptionAlert(MiniCodexText, ConsumptionAlertLevel.Normal, isStale: true);
-            MiniCodexText.ToolTip = CodexResetText.Text;
+            CodexAccount1Name.ToolTip = "无法读取 CC Switch 账号额度";
+            ClearCodexCells(CodexFiveText, CodexFiveResetText, CodexWeeklyText, CodexWeeklyResetText);
+            CodexAccount2Row.Visibility = Visibility.Collapsed;
+            MiniGptA1Label.Text = "M";
+            ClearMiniGptRow(MiniGptA1Label, MiniGptA1Five, MiniGptA1FiveCd, MiniGptA1Weekly, MiniGptA1WeeklyCd);
+            ClearMiniGptRow(MiniGptA2Label, MiniGptA2Five, MiniGptA2FiveCd, MiniGptA2Weekly, MiniGptA2WeeklyCd);
             return;
         }
 
-        ConsumptionRateResult firstRate = ApplyCodexAccount(
-            accounts[0], CodexAccount1Name, CodexUsageText, CodexResetText, CodexCountdownText);
-        var rates = new List<ConsumptionRateResult> { firstRate };
-        bool hasSecond = accounts.Length > 1;
-        CodexAccountDivider.Visibility = hasSecond ? Visibility.Visible : Visibility.Collapsed;
-        CodexAccount2Panel.Visibility = hasSecond ? Visibility.Visible : Visibility.Collapsed;
-        if (hasSecond)
-            rates.Add(ApplyCodexAccount(
-                accounts[1], CodexAccount2Name, CodexUsageText2, CodexResetText2,
-                CodexCountdownText2));
+        ApplyCodexAccount(accounts[0], CodexAccount1Row, CodexAccount1Name,
+            CodexFiveText, CodexFiveResetText, CodexWeeklyText, CodexWeeklyResetText,
+            MiniGptA1Label, MiniGptA1Five, MiniGptA1FiveCd, MiniGptA1Weekly, MiniGptA1WeeklyCd);
 
-        MiniCodexText.Text = string.Join("  ", accounts.Select(FormatMiniAccount));
-        ConsumptionAlertLevel miniLevel = rates.Max(rate => rate.Level);
-        ApplyConsumptionAlert(MiniCodexText, miniLevel, accounts.Any(account => account.IsStale));
-        MiniCodexText.ToolTip = string.Join(
-            Environment.NewLine + Environment.NewLine,
-            accounts.Select(FormatAccountToolTip));
+        bool hasSecond = accounts.Length > 1;
+        CodexAccount2Row.Visibility = hasSecond ? Visibility.Visible : Visibility.Collapsed;
+        if (hasSecond)
+        {
+            ApplyCodexAccount(accounts[1], CodexAccount2Row, CodexAccount2Name,
+                CodexFiveText2, CodexFiveResetText2, CodexWeeklyText2, CodexWeeklyResetText2,
+                MiniGptA2Label, MiniGptA2Five, MiniGptA2FiveCd, MiniGptA2Weekly, MiniGptA2WeeklyCd);
+        }
+        else
+        {
+            ClearMiniGptRow(MiniGptA2Label, MiniGptA2Five, MiniGptA2FiveCd, MiniGptA2Weekly, MiniGptA2WeeklyCd);
+        }
     }
 
-    private ConsumptionRateResult ApplyCodexAccount(
+    private void ApplyCodexAccount(
         CodexAccountUsageSnapshot account,
+        System.Windows.Controls.Grid rowPanel,
         System.Windows.Controls.TextBlock nameText,
-        System.Windows.Controls.TextBlock usageText,
-        System.Windows.Controls.TextBlock resetText,
-        System.Windows.Controls.TextBlock countdownText)
+        System.Windows.Controls.TextBlock fivePercentText,
+        System.Windows.Controls.TextBlock fiveResetText,
+        System.Windows.Controls.TextBlock weeklyPercentText,
+        System.Windows.Controls.TextBlock weeklyResetText,
+        System.Windows.Controls.TextBlock miniLabel,
+        System.Windows.Controls.TextBlock miniFive,
+        System.Windows.Controls.TextBlock miniFiveCd,
+        System.Windows.Controls.TextBlock miniWeekly,
+        System.Windows.Controls.TextBlock miniWeeklyCd)
     {
-        nameText.Text = account.Email + (account.IsStale ? " · 数据已过期" : "");
-        nameText.ToolTip = account.Email;
+        nameText.Text = ShortAccountName(account.Email) + (account.IsStale ? " *" : "");
+        nameText.ToolTip = FormatAccountToolTip(account);
         nameText.Foreground = account.IsStale
             ? new SolidColorBrush(Colors.Orange)
             : new SolidColorBrush(Color.FromRgb(0xDD, 0xEB, 0xFF));
+        miniLabel.Text = account.MiniLabel;
 
         if (!account.Usage.IsAvailable || account.Usage.Windows.Count == 0)
         {
-            usageText.Text = "暂不可用";
-            ApplyConsumptionAlert(usageText, ConsumptionAlertLevel.Normal, isStale: true);
-            resetText.Text = account.RefreshError ?? account.Usage.Error ?? "未返回额度窗口";
-            countdownText.Text = "--";
-            return new ConsumptionRateResult(ConsumptionAlertLevel.Normal, 0, 0);
+            nameText.Text = (ShortAccountName(account.Email) ?? "----") + " 暂不可用";
+            nameText.ToolTip = account.RefreshError ?? account.Usage.Error ?? "未返回额度窗口";
+            nameText.Foreground = new SolidColorBrush(Colors.Orange);
+            ClearCodexCells(fivePercentText, fiveResetText, weeklyPercentText, weeklyResetText);
+            ClearMiniGptRow(miniLabel, miniFive, miniFiveCd, miniWeekly, miniWeeklyCd);
+            return;
         }
 
-        usageText.Text = string.Join(" · ", account.Usage.Windows.Select(CodexUsageFormatter.FormatWindow));
+        var windows = OrderWindows(account.Usage.Windows);
+        var now = DateTimeOffset.Now;
         ConsumptionRateResult rate = account.IsStale
             ? new ConsumptionRateResult(ConsumptionAlertLevel.Normal, 0, 0)
             : _codexConsumptionTracker.Observe(
                 account.AccountId,
-                account.Usage.Windows.Min(window => window.RemainingPercent),
+                windows.Min(window => window.RemainingPercent),
                 DateTimeOffset.UtcNow);
-        ApplyConsumptionAlert(usageText, rate.Level, account.IsStale);
-        usageText.ToolTip = $"近 5 分钟消耗 {rate.FiveMinuteConsumption}% · 近 1 分钟消耗 {rate.OneMinuteConsumption}%";
-        resetText.Text = string.Join(" · ", account.Usage.Windows.Select(CodexUsageFormatter.FormatReset));
-        DateTimeOffset? nextReset = account.Usage.Windows
-            .Where(window => window.ResetsAt is not null)
-            .MinBy(window => window.ResetsAt)?.ResetsAt;
-        countdownText.Text = CodexUsageFormatter.FormatCountdown(nextReset, DateTimeOffset.Now);
-        return rate;
+
+        var five = windows[0];
+        var weekly = windows.Length > 1 ? windows[1] : null;
+
+        // 展开卡片对齐表格
+        fivePercentText.Text = $"{five.RemainingPercent}%";
+        fiveResetText.Text = CodexUsageFormatter.FormatResetCompact(five, now);
+        ApplyConsumptionAlert(fivePercentText, rate.Level, account.IsStale);
+        fivePercentText.ToolTip =
+            $"近 5 分钟消耗 {rate.FiveMinuteConsumption}% · 近 1 分钟消耗 {rate.OneMinuteConsumption}%";
+        if (weekly is not null)
+        {
+            weeklyPercentText.Text = $"{weekly.RemainingPercent}%";
+            weeklyResetText.Text = CodexUsageFormatter.FormatResetCompact(weekly, now);
+            ApplyConsumptionAlert(weeklyPercentText, rate.Level, account.IsStale);
+        }
+        else
+        {
+            weeklyPercentText.Text = "--";
+            weeklyResetText.Text = "--";
+            ApplyConsumptionAlert(weeklyPercentText, ConsumptionAlertLevel.Normal, isStale: false);
+        }
+
+        // 胶囊 GPT 区块单元格（四列：5h 额度 / 5h 倒计时 / 周额度 / 周倒计时）
+        miniFive.Text = $"{five.RemainingPercent}%";
+        miniFiveCd.Text = CodexUsageFormatter.FormatCountdownShort(five.ResetsAt, now);
+        ApplyConsumptionAlert(miniFive, rate.Level, account.IsStale);
+        if (weekly is not null)
+        {
+            miniWeekly.Text = $"{weekly.RemainingPercent}%";
+            miniWeeklyCd.Text = CodexUsageFormatter.FormatCountdownShort(weekly.ResetsAt, now);
+            ApplyConsumptionAlert(miniWeekly, rate.Level, account.IsStale);
+        }
+        else
+        {
+            miniWeekly.Text = "--";
+            miniWeeklyCd.Text = "--";
+            ApplyConsumptionAlert(miniWeekly, ConsumptionAlertLevel.Normal, isStale: false);
+        }
+
+        rowPanel.ToolTip = FormatAccountToolTip(account);
     }
+
+    private static void ClearCodexCells(
+        System.Windows.Controls.TextBlock fivePercent,
+        System.Windows.Controls.TextBlock fiveReset,
+        System.Windows.Controls.TextBlock weeklyPercent,
+        System.Windows.Controls.TextBlock weeklyReset)
+    {
+        fivePercent.Text = "--";
+        fiveReset.Text = "--";
+        weeklyPercent.Text = "--";
+        weeklyReset.Text = "--";
+    }
+
+    private static void ClearMiniGptRow(
+        System.Windows.Controls.TextBlock label,
+        System.Windows.Controls.TextBlock five,
+        System.Windows.Controls.TextBlock fiveCd,
+        System.Windows.Controls.TextBlock weekly,
+        System.Windows.Controls.TextBlock weeklyCd)
+    {
+        label.Text = "--";
+        five.Text = "--";
+        fiveCd.Text = "--";
+        weekly.Text = "--";
+        weeklyCd.Text = "--";
+    }
+
+    /// <summary>
+    /// 窗口排序：短的滚动窗口（5 小时）在前，长的周窗口在后；缺失时长时按重置时间兜底。
+    /// </summary>
+    private static CodexUsageWindow[] OrderWindows(IReadOnlyList<CodexUsageWindow> windows)
+        => windows
+            .OrderBy(window => window.DurationMinutes ?? int.MaxValue)
+            .ThenBy(window => window.ResetsAt ?? DateTimeOffset.MaxValue)
+            .ToArray();
 
     private static void ApplyConsumptionAlert(
         System.Windows.Controls.TextBlock text,
@@ -698,18 +852,22 @@ public partial class MainWindow : Window
         }
     }
 
-    private static string FormatMiniAccount(CodexAccountUsageSnapshot account)
+    /// <summary>账号显示名：取邮箱 @ 前 4 个字母/数字，大写（如 MORT / WANG）。</summary>
+    private static string ShortAccountName(string? email)
     {
-        if (!account.Usage.IsAvailable || account.Usage.Windows.Count == 0)
-            return $"{account.MiniLabel} --";
-        int remaining = account.Usage.Windows.Min(window => window.RemainingPercent);
-        return $"{account.MiniLabel} {remaining}%{(account.IsStale ? "*" : "")}";
+        if (string.IsNullOrWhiteSpace(email)) return "----";
+        string local = email.Split('@')[0];
+        string letters = new string(local.Where(char.IsLetterOrDigit).Take(4).ToArray());
+        return letters.Length > 0 ? letters.ToUpperInvariant() : "----";
     }
 
     private static string FormatAccountToolTip(CodexAccountUsageSnapshot account)
     {
         string status = account.Usage.IsAvailable && account.Usage.Windows.Count > 0
-            ? string.Join(" · ", account.Usage.Windows.Select(CodexUsageFormatter.FormatWindow))
+            ? string.Join(
+                Environment.NewLine,
+                OrderWindows(account.Usage.Windows)
+                    .Select(window => CodexUsageFormatter.FormatWindowRow(window, DateTimeOffset.Now)))
             : account.RefreshError ?? account.Usage.Error ?? "暂不可用";
         string stale = account.IsStale ? Environment.NewLine + "数据已过期" : string.Empty;
         return account.Email + Environment.NewLine + status + stale;
@@ -730,10 +888,12 @@ public partial class MainWindow : Window
         {
             PeakText.Visibility = Visibility.Collapsed;
             MiniPeakDot.Visibility = Visibility.Collapsed;
+            MiniPeakLabel.Visibility = Visibility.Collapsed;
             return;
         }
         PeakText.Visibility = Visibility.Visible;
         MiniPeakDot.Visibility = Visibility.Visible;
+        MiniPeakLabel.Visibility = Visibility.Visible;
 
         // 高峰信息是次级参考状态：只用小圆点和文字，不与余额抢视觉焦点
         var peakBrush = new SolidColorBrush(Color.FromRgb(0xF2, 0x7D, 0x72));
@@ -741,10 +901,11 @@ public partial class MainWindow : Window
         var labelBrush = new SolidColorBrush(Color.FromRgb(0xAE, 0xB8, 0xC4));
         PeakText.Background = System.Windows.Media.Brushes.Transparent;
         PeakDot.Foreground = _isPeak ? peakBrush : normalBrush;
-        PeakLabel.Text = _isPeak ? "高峰时段" : "非高峰时段";
+        PeakLabel.Text = _isPeak ? "高峰" : "非高峰";
         PeakLabel.Foreground = labelBrush;
         MiniPeakDot.Foreground = _isPeak ? peakBrush : normalBrush;
-        MiniPeakDot.ToolTip = _isPeak ? "预计高峰时段" : "预计非高峰时段";
+        MiniPeakLabel.Text = _isPeak ? "高峰" : "非高峰";
+        MiniPeakLabel.Foreground = labelBrush;
     }
 
     private void RaiseTrayStatus(ParsedBalance bal, decimal? change)
@@ -771,10 +932,7 @@ public partial class MainWindow : Window
         var normalDot = new SolidColorBrush(Color.FromRgb(0x4C, 0xC9, 0x4C));
         var dangerDot = new SolidColorBrush(Color.FromRgb(0xE8, 0x66, 0x56));
         StatusDot.Foreground = bal.IsAvailable ? normalDot : dangerDot;
-        StatusLabel.Text = bal.IsAvailable ? "正常" : "账户不可用";
-        StatusLabel.Foreground = bal.IsAvailable
-            ? new SolidColorBrush(Color.FromRgb(0xE8, 0xF4, 0xFF))
-            : new SolidColorBrush(Color.FromRgb(0xFF, 0xD5, 0x4F));
+        StatusDot.ToolTip = bal.IsAvailable ? "账户正常" : "账户不可用";
 
         if (!bal.IsAvailable)
         {
@@ -792,8 +950,8 @@ public partial class MainWindow : Window
 
         if (change is null)
         {
-            ChangeText.Text = "首次刷新";
-            MiniChangeText.Text = "首次";
+            ChangeText.Text = "首次";
+            ChangeText.Foreground = new SolidColorBrush(Color.FromRgb(0xD0, 0xD0, 0xD0));
         }
         else
         {
@@ -801,31 +959,25 @@ public partial class MainWindow : Window
             string txt = sign + change.Value.ToString("0.00")
                          + (pct.HasValue ? "（" + pct.Value.ToString("0.0") + "%）" : "");
             ChangeText.Text = txt;
-            MiniChangeText.Text = sign + change.Value.ToString("0.00");
             ChangeText.Foreground = new SolidColorBrush(change.Value >= 0
                 ? Color.FromRgb(0x4C, 0xC9, 0x4C) : Color.FromRgb(0xE8, 0x66, 0x56));
-            MiniChangeText.Foreground = ChangeText.Foreground;
         }
 
-        string breakdown = "充值 " + sym + bal.ToppedUp.ToString("0.00");
-        if (bal.Granted > 0)
-            breakdown += "  ·  赠送 " + sym + bal.Granted.ToString("0.00");
-        if (!consistent)
-            breakdown += "（待核对）";
-        BreakdownText.Text = breakdown;
         RefreshTimeText.Text = "上次刷新 " + DateTime.Now.ToString("HH:mm:ss");
     }
 
     private void ShowError(string msg)
     {
-        StatusLabel.Text = msg;
-        StatusLabel.Foreground = new SolidColorBrush(Colors.Orange);
+        StatusDot.Foreground = new SolidColorBrush(Color.FromRgb(0xE8, 0x66, 0x56));
+        ChangeText.Text = msg;
+        ChangeText.Foreground = new SolidColorBrush(Colors.Orange);
     }
 
     private void ShowUnavailableCurrency(string currency)
     {
-        StatusLabel.Text = "未返回 " + currency + " 余额";
-        StatusLabel.Foreground = new SolidColorBrush(Colors.Orange);
+        StatusDot.Foreground = new SolidColorBrush(Color.FromRgb(0xE8, 0x66, 0x56));
+        ChangeText.Text = "未返回 " + currency + " 余额";
+        ChangeText.Foreground = new SolidColorBrush(Colors.Orange);
     }
 
     private static string Symbol(string currency) => currency.ToUpperInvariant() switch

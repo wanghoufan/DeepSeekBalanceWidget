@@ -16,6 +16,9 @@ artifacts/runtime/
 *.suo
 .claude/settings.local.json
 
+# Local agent workspace memory (project context notes, not for public repo)
+.workbuddy/
+
 # Logs and temporary files
 *.log
 *.tmp

@@ -17,9 +17,9 @@
 
 | 文件 | 适用平台 |
 | --- | --- |
-| `DeepSeekBalanceWidget-v0.3.0-win-x64.zip` | Windows 11 x64 |
-| `DeepSeekBalanceWidget-v0.3.0-macos-arm64.zip` | macOS Apple Silicon（M 系列） |
-| `DeepSeekBalanceWidget-v0.3.0-macos-x64.zip` | macOS Intel |
+| `DeepSeekBalanceWidget-v0.4.0-win-x64.zip` | Windows 11 x64 |
+| `DeepSeekBalanceWidget-v0.4.0-macos-arm64.zip` | macOS Apple Silicon（M 系列） |
+| `DeepSeekBalanceWidget-v0.4.0-macos-x64.zip` | macOS Intel |
 
 **Windows**：解压后直接运行 `DeepSeekBalanceWidget.exe`。发布包为 Windows x64 自包含单文件版本，目标电脑无需预先安装 .NET Runtime。
 
@@ -150,7 +150,6 @@ dotnet run --project .\src\DeepSeekBalanceWidget -- --mock-scenario sequence
 │  ├─ DeepSeekBalanceWidget/           Windows WPF 应用
 │  └─ DeepSeekBalanceWidget.Mac/       macOS Avalonia 应用
 ├─ tests/                  自动化测试
-├─ docs/plans/             历次方案与审查记录
 ├─ artifacts/ui-audit/     UI 前后对照截图
 ├─ scripts/                构建与发布脚本
 ├─ release/                本地发布产物，不提交 Git
@@ -177,7 +176,5 @@ macOS 的普通配置位于 `~/Library/Application Support/DeepSeekBalanceWidget
 开机自启记录当前正在运行的 EXE 路径。建议先运行 `release\DeepSeekBalanceWidget.exe`，再在设置中启用开机自启，避免注册表继续指向 Debug 构建目录。
 
 ## 文档
-
-设计方案、迭代记录和审查意见位于 [docs/plans](docs/plans/)。
 
 版本变化记录见 [CHANGELOG.md](CHANGELOG.md)。

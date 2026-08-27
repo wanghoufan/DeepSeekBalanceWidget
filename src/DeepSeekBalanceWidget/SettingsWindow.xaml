@@ -70,6 +70,19 @@
       <ComboBoxItem Content="左下角" Tag="BottomLeft"/>
     </ComboBox>
 
+    <TextBlock Text="胶囊区块顺序（上移 / 下移调整）" Margin="0,0,0,4"/>
+    <Grid Margin="0,0,0,12">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="80"/>
+      </Grid.ColumnDefinitions>
+      <ListBox x:Name="AgentOrderBox" Height="92"/>
+      <StackPanel Grid.Column="1" Margin="8,0,0,0">
+        <Button Content="上移" Height="26" Click="AgentOrderUp_Click"/>
+        <Button Content="下移" Height="26" Margin="0,6,0,0" Click="AgentOrderDown_Click"/>
+      </StackPanel>
+    </Grid>
+
     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
       <Button Content="清除 Key" Margin="0,0,8,0" Click="ClearKey_Click"/>
       <Button Content="保存" Width="80" IsDefault="True" Click="Save_Click"/>

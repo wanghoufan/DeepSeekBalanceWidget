@@ -158,7 +158,10 @@ public partial class MainWindow : Window
     {
         if (!account.Usage.IsAvailable || account.Usage.Windows.Count == 0)
             return account.Email + "：" + (account.RefreshError ?? account.Usage.Error ?? "暂不可用");
-        return account.Email + "：" + string.Join(" · ", account.Usage.Windows.Select(CodexUsageFormatter.FormatWindow));
+        return account.Email + "：" + string.Join(
+            Environment.NewLine,
+            account.Usage.Windows.Select(window =>
+                CodexUsageFormatter.FormatWindowRow(window, DateTimeOffset.Now)));
     }
 
     private static string FormatMenuBarCodex(IReadOnlyList<CodexAccountUsageSnapshot> accounts)

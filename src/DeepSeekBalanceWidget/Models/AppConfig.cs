@@ -20,6 +20,8 @@ public sealed class AppConfig
     public bool EnableCodexMonitoring { get; set; } = true;
     public double CodexFontSize { get; set; } = 14;
     public string CodexFontStyle { get; set; } = "DeepSeek"; // DeepSeek / Regular / Bold
+    /// <summary>胶囊区块渲染顺序：deepseek / chatgpt / workbuddy / te（未来），可在设置中调整。</summary>
+    public List<string> AgentOrder { get; set; } = new() { "deepseek", "chatgpt", "workbuddy" };
     public string DefaultCorner { get; set; } = "Remember"; // Remember / BottomRight / BottomLeft
     public bool ShowPeakIndicator { get; set; } = true;
     public List<PeakRange> PeakHourRanges { get; set; } = new()
