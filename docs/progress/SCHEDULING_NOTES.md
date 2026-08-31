@@ -3,6 +3,8 @@
 
 这是 Task Manager 可写的非权威调度记录。
 
+> ⚠️ **仓库边界（2026-08-31 起）**：本仓库只维护 macOS 端（`DeepSeekBalanceWidget-Mac`）。Windows（WPF）端已拆分为独立仓库，文中 Windows build / WPF 相关条目是拆分前的历史调度记录，不再作为本仓库待办。
+
 ## Session
 
 - Date: 2026-08-30

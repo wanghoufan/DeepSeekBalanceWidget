@@ -1,40 +1,47 @@
-# AGENTS.md — DeepSeek Balance Widget
+# AGENTS.md — DeepSeek Balance Widget（macOS 版仓库）
 
-桌面悬浮小工具：监控 DeepSeek API 余额与 ChatGPT Plus 用量。Windows 用 WPF，macOS 用 Avalonia，二者共用 `Models/` 与 `Services/` 业务逻辑。
+> ⚠️ **仓库边界**：本仓库（GitHub: `wanghoufan/DeepSeekBalanceWidget-Mac`）**只维护 macOS 端**。
+> Windows（WPF）端已拆分为独立仓库，两仓库不再互相合并。
+> - 在这里改 `src/DeepSeekBalanceWidget.Mac/**`，以及被 Mac 端 `<Compile Include>` 链接的共享 `Models/`、`Services/`（这两个目录物理上仍位于 `src/DeepSeekBalanceWidget/` 下）；
+> - WPF 专属文件（窗口、DPAPI 存储、`publish.ps1` 等）不属本仓库范围，改动请去 Windows 仓库；
+> - 两侧各自维护一份共享逻辑副本，改的时候只保证本仓库编译通过，不要跨仓库 cherry-pick。
+
+桌面悬浮小工具：监控 DeepSeek API 余额、ChatGPT Plus 用量与 OpenCode Go 额度。本仓库维护 macOS 端（Avalonia），Windows 端（WPF）在独立仓库；Mac 端链接编译 WPF 目录下的平台无关 `Models/` 与 `Services/`。
 
 ## 怎么跑起来
 
-- 开发构建/测试：`dotnet build DeepSeekBalanceWidget.sln` 然后 `dotnet test DeepSeekBalanceWidget.sln`
-- 本地发布 Windows 单文件：`powershell -File scripts/publish.ps1 -Runtime win-x64` → `release/DeepSeekBalanceWidget.exe`（本机未安装 `pwsh`/PowerShell 7，勿用 `pwsh`）
-- macOS 打包：`./scripts/publish-macos.sh arm64`（或 x64）
-- 日常使用运行 `release/DeepSeekBalanceWidget.exe`，不要从 `src/.../bin/Debug/` 启动
+- 开发构建：`dotnet build src/DeepSeekBalanceWidget.Mac/DeepSeekBalanceWidget.Mac.csproj`
+- 不要跑 `dotnet build DeepSeekBalanceWidget.sln`：sln 里挂着 WPF 项目，macOS 缺 WindowsDesktop SDK 会直接失败
+- macOS 打包：`./scripts/publish-macos.sh arm64`（或 x64）→ `release/macos-arm64/DeepSeekBalanceWidget.app`
+- 一键安装并打开：`bash scripts/install-macos.sh arm64`（会装到 `~/Applications` 并注册 Launchpad）
+- 日常使用从「应用程序」或 Launchpad 启动 `DeepSeekBalanceWidget.app`，不要从 `src/.../bin/Debug/` 启动
 
 ## 技术栈
 
-- .NET 8（Windows `net8.0-windows` + WPF；macOS `net8.0` + Avalonia 11）
+- .NET 8 + Avalonia 11（`net8.0`，macOS 原生 `.app`）
 - 余额源：DeepSeek 开放平台 API；Plus 用量源：本机 `~/.cc-switch/codex_oauth_auth.json`
-- 私钥：Windows DPAPI（CurrentUser），macOS 登录钥匙串；均不上传仓库
+- 私钥（API Key）：macOS 登录钥匙串（Keychain），不落明文、不上传仓库
 
 ## 目录与约定
 
-- `src/DeepSeekBalanceWidget`（WPF）与 `src/DeepSeekBalanceWidget.Mac`（Avalonia）共用逻辑，Mac 通过 `<Compile Include="../...">` 链接 Windows 的 `Models/`、`Services/`
-- `docs/plans/` 为历史方案记录；`CHANGELOG.md` 是当前功能真相来源
+- `src/DeepSeekBalanceWidget.Mac`（Avalonia）是本仓库唯一维护目标；它通过 `<Compile Include="../...">` 链接 `src/DeepSeekBalanceWidget` 下的 `Models/`、`Services/`
+- `src/DeepSeekBalanceWidget`（WPF）随 Windows 端拆出，其中 WPF 专属部分（窗口、DPAPI、`publish.ps1`）**只读不维护**：改这些文件请去 Windows 仓库
+- `docs/` 下为治理与进度文档；`CHANGELOG.md` 是当前功能真相来源
 - `release/`、`*.exe`、`*.zip`、`*.app`、`*.dmg`、`artifacts/runtime/`、`config.json` 已 gitignore，不入库
 
 ## ⚠️ 发布前版本一致性（易漏）
 
-打 tag 前必须把三处版本一起升到与 `CHANGELOG.md` 顶部一致，否则 exe / app 内部版本与 GitHub tag 不符：
-1. `src/DeepSeekBalanceWidget/DeepSeekBalanceWidget.csproj` 的 `<Version>`/`<AssemblyVersion>`/`<FileVersion>`
-2. `src/DeepSeekBalanceWidget.Mac/DeepSeekBalanceWidget.Mac.csproj` 的 `<Version>`
-3. `src/DeepSeekBalanceWidget.Mac/Info.plist` 的 `CFBundleShortVersionString` 与 `CFBundleVersion`
+打 tag 前必须把 macOS 侧两处版本一起升到与 `CHANGELOG.md` 顶部一致，否则 app 内部版本与 GitHub tag 不符：
+1. `src/DeepSeekBalanceWidget.Mac/DeepSeekBalanceWidget.Mac.csproj` 的 `<Version>`
+2. `src/DeepSeekBalanceWidget.Mac/Info.plist` 的 `CFBundleShortVersionString` 与 `CFBundleVersion`
 
-Release 包的 zip 文件名由 git tag（`v*`）决定，README 下载表的三处版本号也要同步改。
+Release 包的 zip 文件名由 git tag（`v*`）决定，README 下载表里 macOS 两行的版本号也要同步改。Windows 的 `DeepSeekBalanceWidget.csproj` 版本归 Windows 仓库管，这里不再同步。
 
 ## 当前状态与下一步
 
 - 当前已发布版本：0.4.0（ChatGPT 双窗口对齐表格、胶囊区块顺序 `AgentOrder`、WorkBuddy 占位）
 - 工作区已提交未发布（见 CHANGELOG「未发布」）：OpenCode Go 额度监测（替代原 WB 占位）、预警系统重构（常驻弹窗 + 循环警报声、位置可配）、设置页改版（左侧导航 + 监测项 2×2 卡片）、胶囊整改（单行宽、按钮贴最右、胶囊刷新时间移除、OC 区块、GPT 列距收紧）与若干修复
-- 下一步：① 择机打 `v*` tag 升版本发布——升版须同步 csproj / Mac csproj / Info.plist / README 三处版本号（详见上方「发布前版本一致性」），否则 exe/app 内部版本与 GitHub tag 不符；② 或先补齐 WorkBuddy 实际额度接入
+- 下一步：① 择机打 `v*` tag 升版本发布——升版须同步 Mac csproj / Info.plist / README 版本号（详见上方「发布前版本一致性」），否则 app 内部版本与 GitHub tag 不符；② 或先补齐 WorkBuddy 实际额度接入；③ 视 Windows 新仓库落地情况，决定是否把 `src/DeepSeekBalanceWidget/`（WPF）从本仓库移除
 
 ## 治理模板已应用
 

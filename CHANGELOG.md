@@ -1,4 +1,6 @@
-# Changelog
+# Changelog（macOS 版仓库）
+
+> ⚠️ 本仓库 **只维护 macOS 端**（`DeepSeekBalanceWidget-Mac`）。Windows（WPF）端已拆分为独立仓库，其变更不再记录在此。
 
 本项目遵循语义化版本号。
 
@@ -6,13 +8,13 @@
 
 ### 功能
 
-- 新增 **Mac 胶囊置顶面板**：始终置顶桌面显示，支持 MiniMode 切换，DS/GPT/OC 区块水平排列，刷新时间右上角
+- 新增 **Mac 胶囊置顶面板**：始终置顶桌面显示，支持 MiniMode 切换，DS/GPT/OC 区块水平排列
 - 新增 **Mac 设置页标签式导航**：左侧 RadioButton 导航（监测项/预警/界面/通用），右侧 ScrollViewer 面板切换
 - 新增 **Mac 报警功能**：`MacAlarmSound`（11种声音程序化合成）+ `ToastWindow`（弹窗+堆叠+淡入淡出）+ `MacToastService`
 - 新增 **Mac 置顶功能**：NSWindowSetLevel P/Invoke 实现 macOS 原生窗口层级
 - 新增 **Mac 单实例检测**：防止多开，Dock 图标点击还原已有窗口
 - 新增 **Mac 监测项独立开关**：设置面板新增 DeepSeek / ChatGPT / WorkBuddy / OpenCode 四项独立开关，ApplyMonitoringVisibility 按配置显隐
-- 新增 **Mac OpenRouter 预留**：接口/Provider/Parser/Formatter/Model 五文件 + 设置卡片（默认关闭）
+- 新增 **Mac OpenRouter 预留**：接口/Provider/Parser/Formatter/Model 五文件 + 设置卡片（默认关闭）；API Key 与 DeepSeek / OpenCode 一致，存入 macOS 登录钥匙串（`com.deepseekbalancewidget.openrouter-api-key`），配置文件只留 `keychain` 标记，旧配置首次加载自动修复
 - 新增 **进度条 Track+Fill 模式**：替换 ProgressBar 控件，使用 Border 背景轨道 + 填充条，三色区间（<20%红, ≤70%橙, else绿）
 - 新增 **设置页 Apply 按钮**：应用设置但不关闭窗口，支持实时预览
 - 新增 **清除 Key 二次确认**：红色样式 + 确认对话框，防止误触
@@ -26,7 +28,7 @@
 - OpenCode 额度预警：与 ChatGPT 额度预警共用同一套档位（默认 20% / 10%）与恢复判定配置，5h / 周 / 月三窗口独立跟踪
 - 警报系统重构：预警类通知改为**常驻弹窗 + 循环警报声**，需点击「知道了」关闭（持续模式），或限时 ≥10 秒后自动关闭（限时模式）；警报窗位置可配置（右上角 / 右侧中间 / 右下角，默认右上角），多警报堆叠、点掉最后一张才停声；恢复类通知保持自动消失不响声
 - 设置新增「预警行为」分组：警报声开关、持续 / 限时模式、警报窗位置、试听警报
-- 设置窗口每个监测项统一「开关 + API Key（如需）+ 测试连接」行式布局，测试结果行内显示（绿 ✓ / 红 ✗）；OpenCode Key 支持手动粘贴（DPAPI 加密）或自动读本机 `~/.local/share/opencode/auth.json`
+- 设置窗口每个监测项统一「开关 + API Key（如需）+ 测试连接」行式布局，测试结果行内显示（绿 ✓ / 红 ✗）；OpenCode Key 支持手动粘贴（macOS 登录钥匙串加密）或自动读本机 `~/.local/share/opencode/auth.json`
 - 新增 ChatGPT 额度预警：5 小时额度与周额度各自独立跟踪剩余百分比，降到设定档位（默认 20% / 10%）时弹窗预警；一次刷新若跨过多个档位只播报最低档，同一档位每个周期仅提醒一次
 - 额度恢复通知：触发过预警之后，额度回到高位（默认 ≥ 95%）时弹窗告知已恢复，正文写明具体账号，以及是 5 小时额度还是周额度；额度充足时单纯因周期重置不会播报恢复
 - 恢复播报与低量预警在同一刷新内互斥（恢复优先），避免「仅剩 X%」与「已恢复」自相矛盾地同时弹出
@@ -38,7 +40,7 @@
 
 ### 工程化
 
-- 新增平台无关的 `CodexQuotaAlertEvaluator`，按「账号 + 窗口」独立维护跟踪状态，Windows 与 macOS 共用同一份判定逻辑
+- 新增平台无关的 `CodexQuotaAlertEvaluator`，按「账号 + 窗口」独立维护跟踪状态，不绑定具体 UI 框架，判定逻辑只此一份
 - 新增 `CodexQuotaAlertEvaluatorTests`（15 个用例），覆盖首次基线不打扰、分档去重、跨档只播最低档、恢复后重新启用、周额度独立跟踪、冷却吸收抖动、恢复与预警互斥等场景
 - 新增共享层 `OpenCodeUsageProvider` / `OpenCodeUsageParser` / `OpenCodeUsageFormatter` / `OpenCodeQuotaAlertEvaluator`（macOS 已接入编译）
 - 新增 `OpenCodeUsageParserTests` 与 `OpenCodeQuotaAlertEvaluatorTests`（覆盖官方响应解析、多形态 resetsAt、auth.json Key 解析、基线 / 分档去重 / 恢复判定 / 三窗口独立跟踪）
@@ -55,7 +57,6 @@
 
 - 修复胶囊 OC 区块标签「OC」被 Border 左右内边距（各 6px）吃掉 12px、第 0 列实际可见宽度不足而不可见的问题：第 0 列宽 20→26，留出 14px 显示空间
 - 修复胶囊 GPT 区块倒计时列用 `Width=Auto` 在 StackPanel 父容器下被拉伸、短文本（如「6d」）右侧出现大空白的问题：改为按内容精准固定列宽（账号 12 / 5h 额度 32 / 5h 倒计时 42 / 周额度 32 / 周倒计时 46），Border 内边距由 4 收紧到 2
-- 胶囊刷新时间从底部单独一行（占据底部整块空白、内容无法上下居中）改为右上角小字，主体内容改为上下居中
 - 修复额度预警因用量数据短暂回弹到恢复线（≥95%）即误触发 `ResetCycle` 清空 `NotifiedThresholds`，导致同一档位（如 10%）反复弹窗的问题；恢复播报现仅在真正换周期（`ResetsAt` 变化）时触发（OpenCode / ChatGPT 共用 evaluator，已补对应测试）
 
 ## 0.4.0 — 2026-08-27
@@ -78,11 +79,11 @@
 - macOS 版 API Key 保存到登录钥匙串，支持登录时自动启动
 - 新增 macOS 一键发布与安装脚本（`scripts/publish-macos.sh`、`scripts/install-macos.sh`）
 - 新增本机 Codex 用量消耗速率追踪（`CodexConsumptionRateTracker`）
-- GitHub Releases 同时发布 Windows 与 macOS（arm64/x64）安装包
+- GitHub Releases 发布 macOS（arm64 / x64）安装包（Windows 安装包现由 Windows 独立仓库发布）
 
 ### 工程化
 
-- CI 增加 macOS 构建验证；Release 工作流扩展为双平台矩阵构建
+- 新增 macOS 构建与发布脚本（`publish-macos.sh` / `install-macos.sh`）；Release 工作流构建 macOS 安装包（Windows 端构建现归 Windows 独立仓库）
 
 ## 0.2.0 — 2026-08-06
 
@@ -107,7 +108,7 @@
 - 系统托盘、置顶、隐藏、退出和开机自启
 - 北京时间峰值时段参考
 - 多显示器边界恢复和窗口位置记忆
-- DPAPI CurrentUser 加密保存 API Key
+- 加密保存 API Key（当时为 Windows DPAPI CurrentUser；macOS 端现为登录钥匙串）
 - Mock 场景及 31 项自动化测试
 
 ### 工程化

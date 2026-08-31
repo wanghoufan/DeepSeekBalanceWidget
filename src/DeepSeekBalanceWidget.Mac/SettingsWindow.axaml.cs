@@ -17,6 +17,7 @@ public partial class SettingsWindow : Window
     private readonly Action? _onApplied;
     private bool _clearKey;
     private bool _clearOpenCodeKey;
+    private bool _clearOpenRouterKey;
 
     public SettingsWindow(MacConfigService configService, AppConfig config, Action? onApplied = null)
     {
@@ -33,6 +34,7 @@ public partial class SettingsWindow : Window
     {
         ApiKeyBox.Text = _configService.GetApiKey() ?? string.Empty;
         OpenCodeKeyBox.Text = _configService.GetOpenCodeApiKey() ?? string.Empty;
+        OpenRouterKeyBox.Text = _configService.GetOpenRouterApiKey() ?? string.Empty;
 
         IntervalBox.Text = _config.RefreshIntervalSeconds.ToString(CultureInfo.CurrentCulture);
         ThresholdBox.Text = _config.LowBalanceThreshold.ToString("0.##", CultureInfo.CurrentCulture);
@@ -43,6 +45,7 @@ public partial class SettingsWindow : Window
         EnableCodexCheck.IsChecked = _config.EnableCodexMonitoring;
         EnableWbCheck.IsChecked = _config.EnableWorkbuddyMonitoring;
         EnableOcCheck.IsChecked = _config.EnableOpenCodeMonitoring;
+        EnableOpenRouterCheck.IsChecked = _config.EnableOpenRouterMonitoring;
 
         EnableGptAlerts.IsChecked = _config.EnableCodexQuotaAlerts;
         GptThresholdsBox.Text = _config.GptQuotaAlertThresholds is { Count: > 0 } gptThresholds
@@ -117,6 +120,15 @@ public partial class SettingsWindow : Window
 
         OpenCodeKeyBox.Text = string.Empty;
         _clearOpenCodeKey = true;
+    }
+
+    private async void ClearOpenRouterKey_Click(object? sender, RoutedEventArgs e)
+    {
+        if (!await ShowClearKeyMessageBoxAsync())
+            return;
+
+        OpenRouterKeyBox.Text = string.Empty;
+        _clearOpenRouterKey = true;
     }
 
     private async Task<bool> ShowClearKeyMessageBoxAsync()
@@ -235,6 +247,19 @@ public partial class SettingsWindow : Window
             string summary = string.Join(" · ", snapshot.Windows.Select(window =>
                 $"{OpenCodeUsageFormatter.ShortLabelOf(window.Kind)} {window.RemainingPercent}%"));
             return (true, "✓ 连接成功" + (summary.Length == 0 ? string.Empty : " · " + summary));
+        });
+    }
+
+    private async void TestOpenRouter_Click(object? sender, RoutedEventArgs e)
+    {
+        string? key = string.IsNullOrWhiteSpace(OpenRouterKeyBox.Text) ? null : OpenRouterKeyBox.Text;
+        await RunTestAsync(TestOpenRouterBtn, OpenRouterTestResult, async () =>
+        {
+            using var provider = new OpenRouterUsageProvider(key);
+            var snapshot = await provider.GetUsageAsync(CancellationToken.None);
+            return snapshot.IsAvailable
+                ? (true, "✓ 连接成功")
+                : (false, "✗ " + (snapshot.Error ?? "暂不可用"));
         });
     }
 
@@ -366,6 +391,10 @@ public partial class SettingsWindow : Window
                 _configService.SetOpenCodeApiKey(_config, null);
             else if (!string.IsNullOrWhiteSpace(OpenCodeKeyBox.Text))
                 _configService.SetOpenCodeApiKey(_config, OpenCodeKeyBox.Text);
+            if (_clearOpenRouterKey)
+                _configService.SetOpenRouterApiKey(_config, null);
+            else if (!string.IsNullOrWhiteSpace(OpenRouterKeyBox.Text))
+                _configService.SetOpenRouterApiKey(_config, OpenRouterKeyBox.Text);
 
             _config.RefreshIntervalSeconds = interval;
             _config.LowBalanceThreshold = threshold;
@@ -375,6 +404,7 @@ public partial class SettingsWindow : Window
             _config.EnableCodexMonitoring = EnableCodexCheck.IsChecked == true;
             _config.EnableWorkbuddyMonitoring = EnableWbCheck.IsChecked == true;
             _config.EnableOpenCodeMonitoring = EnableOcCheck.IsChecked == true;
+            _config.EnableOpenRouterMonitoring = EnableOpenRouterCheck.IsChecked == true;
 
             _config.EnableCodexQuotaAlerts = EnableGptAlerts.IsChecked == true;
             _config.GptQuotaAlertThresholds = gptThresholds;

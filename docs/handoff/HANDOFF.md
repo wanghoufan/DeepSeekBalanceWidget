@@ -3,6 +3,8 @@
 
 用于暂停 / 恢复，避免全仓重读。
 
+> ⚠️ **仓库边界**：本仓库只维护 macOS 端（`DeepSeekBalanceWidget-Mac`）。Windows（WPF）端已拆分为独立仓库；下文 "Windows WPF build BLOCKED" 等描述指的是本仓库残留的 WPF 项目在本机构建受限，属环境限制记录，不再是本仓库的维护目标。
+
 ## Resume Capsule
 
 - Captured at: 2026-08-30

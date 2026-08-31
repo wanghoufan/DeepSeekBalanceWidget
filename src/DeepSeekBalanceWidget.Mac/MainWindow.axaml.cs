@@ -206,7 +206,7 @@ public partial class MainWindow : Window
         // collapsed in mini mode so it can never reserve layout space.
         RefreshButton.IsVisible = !mini;
         // Re-enable content sizing after a mode switch so the visible Card/MiniCard
-        // determines the native window bounds on Avalonia as it does on WPF.
+        // determines the native window bounds on Avalonia.
         SizeToContent = SizeToContent.WidthAndHeight;
         // MiniCard has no fixed Width in XAML. Reset it explicitly as well so a
         // previous measured size can never constrain the content-driven layout.

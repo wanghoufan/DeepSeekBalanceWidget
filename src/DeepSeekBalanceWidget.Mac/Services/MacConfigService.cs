@@ -13,6 +13,7 @@ public sealed class MacConfigService
 {
     private const string KeychainService = "com.deepseekbalancewidget.api-key";
     private const string OpenCodeKeychainService = "com.deepseekbalancewidget.opencode-api-key";
+    private const string OpenRouterKeychainService = "com.deepseekbalancewidget.openrouter-api-key";
     private const string KeychainAccount = "default";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -70,6 +71,13 @@ public sealed class MacConfigService
             && HasKeychainEntry(OpenCodeKeychainService))
         {
             config.OpenCodeApiKeyEncrypted = "keychain";
+            repaired = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(config.OpenRouterApiKeyEncrypted)
+            && HasKeychainEntry(OpenRouterKeychainService))
+        {
+            config.OpenRouterApiKeyEncrypted = "keychain";
             repaired = true;
         }
 
@@ -160,6 +168,35 @@ public sealed class MacConfigService
 
             // Keep the Keychain write and its config marker in one serialized
             // operation so a caller cannot persist a key without its marker.
+            Save(config);
+        }
+    }
+
+    /// <summary>OpenRouter API Key 的 macOS 登录钥匙串存储。</summary>
+    public string? GetOpenRouterApiKey()
+    {
+        if (!string.Equals(_lastConfig?.OpenRouterApiKeyEncrypted, "keychain", StringComparison.Ordinal))
+            return null;
+
+        return RunSecurity("find-generic-password", "-s", OpenRouterKeychainService, "-a", KeychainAccount, "-w")
+            ?.TrimEnd('\r', '\n');
+    }
+
+    public void SetOpenRouterApiKey(AppConfig config, string? value)
+    {
+        lock (_writeLock)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                RunSecurity("delete-generic-password", "-s", OpenRouterKeychainService, "-a", KeychainAccount);
+                config.OpenRouterApiKeyEncrypted = null;
+            }
+            else
+            {
+                WriteKeychainValue(OpenRouterKeychainService, value);
+                config.OpenRouterApiKeyEncrypted = "keychain";
+            }
+
             Save(config);
         }
     }

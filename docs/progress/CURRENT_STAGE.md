@@ -1,6 +1,8 @@
 
 # CURRENT_STAGE｜Readable View
 
+> ⚠️ **仓库边界（2026-08-31 起）**：本仓库只维护 macOS 端（`DeepSeekBalanceWidget-Mac`）。Windows（WPF）端已拆分为独立仓库，本仓库内 `src/DeepSeekBalanceWidget/` 只读不维护。下文中 "Windows WPF build BLOCKED" 等属于本机环境限制记录，不再是本仓库要达成的目标——按此边界解读，不要把它当作待办阻塞项。
+
 > **本文件不是 authoritative state。**
 
 机器权威：

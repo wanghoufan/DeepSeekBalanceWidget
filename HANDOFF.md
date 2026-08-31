@@ -1,5 +1,7 @@
 # Handoff - 2026-08-31 16:10
 
+> ⚠️ **仓库边界**：本仓库（`wanghoufan/DeepSeekBalanceWidget-Mac`）**只维护 macOS 端**。Windows（WPF）端已拆分为独立仓库。下文出现的 Windows / WPF 字样均为历史语境或构建环境限制说明，不代表本仓库目标平台。
+
 ## 当前状态
 - Stage: Widget Mac 端 UI 改造（已暂停）
 - 构建: 0 Error(s), 4 Warning(s)

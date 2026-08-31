@@ -1,5 +1,7 @@
 # 项目治理模板迁移审计
 
+> ⚠️ **仓库边界（2026-08-31 起）**：本仓库已拆为 macOS 专用仓库（`DeepSeekBalanceWidget-Mac`），Windows（WPF）端迁至独立仓库。本审计记录的是拆分**之前**的项目结构，其中 Windows WPF / 双端描述属历史事实，保留原文以免失真；评估现状时请以 README / AGENTS.md 的仓库边界说明为准。
+
 ## 迁移目标
 
 将现有 DeepSeek Balance Widget 纳入 `01_治理模板/AI-Governance-Template` 的 ORCA V2.3.1 / Delivery V1.10 治理结构，同时保持现有 .NET 解决方案、Windows WPF、macOS Avalonia、共享 `Models/Services`、发布脚本和业务文档可运行。

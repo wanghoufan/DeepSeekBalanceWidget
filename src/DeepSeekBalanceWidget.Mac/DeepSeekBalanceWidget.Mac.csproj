@@ -16,7 +16,9 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.3" />
   </ItemGroup>
 
-  <!-- Reuse platform-neutral application logic. The WPF project stays untouched. -->
+  <!-- Reuse platform-neutral application logic (Models/Services).
+       Note: src/DeepSeekBalanceWidget (WPF) is Windows-only and no longer maintained
+       in this macOS repo — it lives in the separate Windows repository. -->
   <ItemGroup>
     <Compile Include="../DeepSeekBalanceWidget/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
     <Compile Include="../DeepSeekBalanceWidget/Services/AlertEvaluator.cs" Link="Services/AlertEvaluator.cs" />

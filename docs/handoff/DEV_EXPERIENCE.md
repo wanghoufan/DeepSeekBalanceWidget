@@ -1,8 +1,10 @@
-# 开发经验记录｜DeepSeek Balance Widget
+# 开发经验记录｜DeepSeek Balance Widget（macOS 版仓库）
 
 > 唯一可写权威经验沉淀文档。仅 Experience Recorder 可写，其他文档不得代改。代码不改、只记经验。
 
-- 项目：DeepSeek Balance Widget（DeepSeek API 余额 + ChatGPT Plus 用量 + OpenCode Go 额度 桌面悬浮小工具，Windows WPF / macOS Avalonia 共用 Models/Services）
+> ⚠️ **仓库边界**：本仓库只维护 macOS 端（GitHub: `DeepSeekBalanceWidget-Mac`）。Windows（WPF）端已拆分为独立仓库，本仓库内 `src/DeepSeekBalanceWidget/` 只读不维护。以下经验条目中提及 Windows / WPF 的部分是 2026-08-31 仓库拆分前沉淀的历史上下文，保留原文以免失真。
+
+- 项目：DeepSeek Balance Widget（DeepSeek API 余额 + ChatGPT Plus 用量 + OpenCode Go 额度 桌面悬浮小工具；本仓库为 macOS Avalonia 版，Models/Services 与 Windows 端同源但已各自独立演进）
 - 初始化时间：2026-08-31
 - 已读取：`AGENTS.md:1`、`README.md:1`、`docs/pm/PLAN.md:1`、`docs/experience/DEV_EXPERIENCE.template.md:1`、`docs/handoff/HANDOFF.md:1`
 - 状态：`docs/handoff/DEV_EXPERIENCE.md` 新建，尚无 E-xxx 条目，等待首条反馈落盘
