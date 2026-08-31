@@ -1,0 +1,27 @@
+# Build output
+src/**/bin/
+src/**/obj/
+release/
+*.app
+*.exe
+*.dmg
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# NuGet
+packages/
+
+# Config (contains API keys)
+config.json
+*.corrupt-*.bak
+
+# Runtime
+docs/runtime/INTERNAL_CAPABILITY_CONSUMED.jsonl

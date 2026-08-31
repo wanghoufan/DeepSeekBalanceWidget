@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+import argparse, hashlib, json, os, sys
+
+REUSABLE_RESOLVED={'PROMOTED','REJECTED','DEFERRED'}
+PROJECT_RESOLVED={'PROJECT_ONLY','CLOSED','REJECTED','DEFERRED'}
+
+def h(p):
+    x=hashlib.sha256()
+    with open(p,'rb') as f:
+        for c in iter(lambda:f.read(65536),b''): x.update(c)
+    return x.hexdigest()
+
+def jsonl(p):
+    if not os.path.exists(p): return []
+    return [json.loads(x) for x in open(p,encoding='utf-8') if x.strip()]
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--repo-root',default='.')
+    ap.add_argument('--template-root',required=True)
+    a=ap.parse_args()
+    r=os.path.abspath(a.repo_root); t=os.path.abspath(a.template_root)
+    reasons=[]
+
+    events=jsonl(os.path.join(r,'docs','learning','LEARNING_EVENTS.jsonl'))
+    qpath=os.path.join(r,'docs','learning','PROMOTION_QUEUE.yaml')
+    q=json.load(open(qpath,encoding='utf-8')) if os.path.exists(qpath) and os.path.getsize(qpath) else {'items':[]}
+    by_event={x.get('learning_event_id'):x for x in q.get('items',[])}
+
+    promotions=jsonl(os.path.join(r,'docs','learning','PROMOTION_LOG.jsonl'))
+    promoted=[x for x in promotions if x.get('status')=='PROMOTED']
+    promoted_patterns={x.get('canonical_pattern_id') for x in promoted if x.get('canonical_pattern_id')}
+
+    # Earlier occurrences of a canonical pattern are resolved by a later successful promotion for that pattern.
+    for e in events:
+        eid=e.get('event_id'); cid=e.get('canonical_pattern_id'); item=by_event.get(eid)
+        if cid in promoted_patterns:
+            continue
+        if not item:
+            reasons.append('unrouted learning event '+str(eid)); continue
+        st=item.get('status')
+        if e.get('reusable'):
+            if st not in REUSABLE_RESOLVED: reasons.append('unresolved reusable event '+str(eid))
+        else:
+            if st not in PROJECT_RESOLVED: reasons.append('unresolved project event '+str(eid))
+        if st=='DEFERRED' and not (item.get('reason') or item.get('resolution_reason')):
+            reasons.append('deferred without reason '+str(eid))
+
+    for rec in promotions:
+        if rec.get('status')=='PARTIAL':
+            reasons.append('partial promotion '+str(rec.get('promotion_id')))
+
+    mp=os.path.join(t,'docs','governance','TEMPLATE_MANIFEST.json')
+    vp=os.path.join(t,'docs','governance','TEMPLATE_VERSION.yaml')
+    manifest=json.load(open(mp,encoding='utf-8')) if os.path.exists(mp) else None
+    version=json.load(open(vp,encoding='utf-8')) if os.path.exists(vp) else None
+    if not manifest: reasons.append('TEMPLATE_MANIFEST missing')
+    if not version: reasons.append('TEMPLATE_VERSION missing')
+    mb={x.get('path'):x for x in (manifest or {}).get('files',[])}
+
+    # Promotion hash reconciliation.
+    for rec in promoted:
+        pid=rec.get('promotion_id'); rel=rec.get('relative_path')
+        pp=os.path.join(r,rel or ''); tp=os.path.join(t,rel or '')
+        if not rel or not os.path.isfile(pp): reasons.append('promoted project target missing '+str(pid))
+        elif h(pp)!=rec.get('project_hash_after'): reasons.append('project hash drift '+str(pid))
+        if not rel or not os.path.isfile(tp): reasons.append('promoted template target missing '+str(pid))
+        elif h(tp)!=rec.get('template_hash_after'): reasons.append('template hash drift '+str(pid))
+        me=mb.get(rel)
+        if not me: reasons.append('manifest missing promoted target '+str(pid))
+        elif me.get('sha256')!=rec.get('template_hash_after'): reasons.append('manifest hash mismatch '+str(pid))
+
+    if promoted and version:
+        latest=max(promoted,key=lambda x:x.get('promoted_at',''))
+        if version.get('last_promotion_id')!=latest.get('promotion_id'):
+            reasons.append('TEMPLATE_VERSION.last_promotion_id mismatch')
+
+    # Applied governance must represent current absorbed template unless a trusted pin has been validated.
+    ap=os.path.join(r,'docs','governance','PROJECT_GOVERNANCE_APPLIED.yaml')
+    if os.path.exists(ap) and manifest:
+        applied=json.load(open(ap,encoding='utf-8'))
+        if applied.get('current_applied_fingerprint')!=manifest.get('template_fingerprint'):
+            pin=applied.get('pin') or {}
+            if pin.get('status')!='VALIDATED':
+                reasons.append('project applied governance is stale')
+
+    # Skill reconciliation.
+    sr=os.path.join(r,'docs','learning','SKILL_REGISTRY.yaml')
+    skills=json.load(open(sr,encoding='utf-8')).get('skills',[]) if os.path.exists(sr) else []
+    sb={s.get('skill_id'):s for s in skills}
+    usage=jsonl(os.path.join(r,'docs','learning','SKILL_USAGE.jsonl'))
+    effects=jsonl(os.path.join(r,'docs','learning','SKILL_EFFECTIVENESS.jsonl'))
+
+    for rec in promoted:
+        if rec.get('change_type')=='SKILL':
+            sid=rec.get('skill_id')
+            s=sb.get(sid)
+            if not s or s.get('status')!='PRODUCTION':
+                reasons.append('promoted skill missing from production registry '+str(sid))
+
+    for s in skills:
+        if s.get('status')!='PRODUCTION': continue
+        sid=s.get('skill_id'); rel=s.get('path')
+        pp=os.path.join(r,rel or ''); tp=os.path.join(t,rel or '')
+        if not rel or not os.path.isfile(pp): reasons.append('production skill file missing in project '+str(sid))
+        if not rel or not os.path.isfile(tp): reasons.append('production skill file missing in template '+str(sid))
+        me=mb.get(rel)
+        if not me: reasons.append('manifest missing production skill '+str(sid))
+        lifecycle=s.get('lifecycle_status')
+        actual_usage=[u for u in usage if u.get('skill_id')==sid]
+        actual_effect=[e for e in effects if e.get('skill_id')==sid]
+        if lifecycle in {'REUSED_IN_NEXT_PROJECT','EFFECTIVENESS_RECORDED'} and not actual_usage:
+            reasons.append('skill claims reuse without usage record '+str(sid))
+        if lifecycle=='EFFECTIVENESS_RECORDED' and not actual_effect:
+            reasons.append('skill claims effectiveness without effectiveness record '+str(sid))
+
+    # Repeated canonical patterns require an explicit enforcement or decision.
+    preg=os.path.join(r,'docs','learning','LEARNING_PATTERN_REGISTRY.yaml')
+    if os.path.exists(preg):
+        pd=json.load(open(preg,encoding='utf-8'))
+        for cid,p in pd.get('patterns',{}).items():
+            if int(p.get('occurrences',0))>=3 and p.get('current_enforcement') in (None,'','NONE'):
+                reasons.append('repeated canonical pattern lacks enforcement/decision '+cid)
+
+    out={'learning_gate':'PASS' if not reasons else 'FAIL','reasons':reasons}
+    print(json.dumps(out,ensure_ascii=False))
+    if reasons: sys.exit(5)
+
+if __name__=='__main__': main()

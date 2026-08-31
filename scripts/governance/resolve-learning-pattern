@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+import argparse,json,os,sys
+sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
+from learning_pattern_lib import resolve
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--repo-root',default='.')
+    ap.add_argument('--proposal'); ap.add_argument('--trigger'); ap.add_argument('--category')
+    ap.add_argument('--symptom'); ap.add_argument('--root-cause')
+    a=ap.parse_args()
+    out=resolve(os.path.abspath(a.repo_root),a.proposal,a.trigger,a.category,a.symptom,a.root_cause,True)
+    print(json.dumps(out,ensure_ascii=False))
+if __name__=='__main__': main()

@@ -1,0 +1,30 @@
+{
+  "schema_version": "2.3.1-mac-first",
+  "authoritative": true,
+  "source_of_truth": "docs/runtime/runtime-health.json",
+  "last_audit": "2026-08-29T04:34:05.925558+00:00",
+  "components": {
+    "ORCA": "VERIFIED",
+    "OpenCode_short": "VERIFIED",
+    "OpenCode_persistent": "UNVERIFIED",
+    "Codex_short": "UNVERIFIED",
+    "Codex_persistent": "UNVERIFIED",
+    "Dispatch_Gateway": "VERIFIED",
+    "Go_Resource_Guard": "UNVERIFIED",
+    "Task_Manager_Isolation": "UNVERIFIED",
+    "Evidence_Writer": "UNVERIFIED",
+    "State_Guard": "UNVERIFIED",
+    "State_Writer": "UNVERIFIED",
+    "Human_Gate_Trusted_Approval_Chain": "UNVERIFIED",
+    "Computer_Use": "UNVERIFIED",
+    "MAC_RUNTIME_V1": "VERIFIED",
+    "Mac_Runtime_Health_Check": "VERIFIED",
+    "Mac_Negative_Canary": "VERIFIED",
+    "Mac_Positive_Contract": "VERIFIED",
+    "Mac_Migration_Audit": "VERIFIED"
+  },
+  "known_issues": [
+    "Windows/WSL adapters remain intentionally deferred; they have not been validated by this Mac audit."
+  ],
+  "target_first_runtime": "macOS"
+}

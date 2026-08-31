@@ -1,0 +1,849 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input;
+using Avalonia.Media;
+using Avalonia.Platform;
+using Avalonia.Threading;
+using DeepSeekBalanceWidget.Models;
+using DeepSeekBalanceWidget.Services;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+
+namespace DeepSeekBalanceWidget;
+
+public partial class MainWindow : Window
+{
+    // Window.Position and Screen.WorkingArea use physical pixels, while
+    // Bounds uses logical pixels. Retina displays also need more tolerance
+    // because native drag positions are quantized to physical pixels.
+    private const double EdgeDetectionThreshold = 24;
+    private const double EdgeRevealThickness = 12;
+    private const int DeepSeekRefreshSeconds = 30;
+    private const int UsageRefreshSeconds = 60;
+    private const int NSNormalWindowLevel = 0;
+    private const int NSFloatingWindowLevel = 3;
+
+    // NSWindow does not export a C function for setLevel:. Invoke the native
+    // Objective-C selector directly so borderless Avalonia windows reliably
+    // stay above ordinary application windows on macOS.
+    [DllImport("/usr/lib/libobjc.A.dylib")]
+    private static extern IntPtr sel_registerName(string name);
+
+    [DllImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_msgSend")]
+    private static extern void objc_msgSend_setLevel(IntPtr receiver, IntPtr selector, nint level);
+
+    private readonly MacConfigService _configService;
+    private readonly AppConfig _config;
+    private readonly DispatcherTimer _refreshTimer;
+    private readonly DispatcherTimer _codexTimer;
+    private readonly DispatcherTimer _openCodeTimer;
+    private readonly DispatcherTimer _peakTimer;
+    private readonly DispatcherTimer _positionSaveTimer;
+    private readonly DispatcherTimer _autoHideTimer;
+    private readonly ICodexAccountsUsageProvider _codexProvider = new MacCodexUsageProvider();
+    private IOpenCodeUsageProvider _openCodeProvider;
+    private readonly CancellationTokenSource _cancellation = new();
+    private IBalanceProvider _provider;
+    private MacMenuBarBalance? _menuBarBalance;
+    private ParsedBalance? _latestBalance;
+    private string _menuBarBalanceText = "¥ --";
+    private string _menuBarBalanceTooltip = "DeepSeek 余额监控：正在读取余额";
+    private string _menuBarCodexText = "--";
+    private string _menuBarCodexTooltip = "ChatGPT Plus：正在读取额度";
+    private string _menuBarOpenCodeText = "--";
+    private string _menuBarOpenCodeTooltip = "OpenCode Go：正在读取额度";
+    private string _menuBarPeakText = "谷";
+    private decimal? _previousBalance;
+    private bool _refreshing;
+    private bool _codexRefreshing;
+    private bool _openCodeRefreshing;
+    private bool _isMini;
+    private bool _isDragging;
+    private bool _isEdgeHidden;
+    private bool _isSettingsOpen;
+    private bool _pointerInside;
+    private bool _suppressPositionSave;
+    private bool _isRestoringFromDock;
+    private DateTime _lastPointerPressUtc;
+    private DockEdge _dockEdge;
+
+    // App uses this to keep the close guard active for the full activation
+    // callback, including any native close event raised after BringToFront.
+    internal bool IsRestoringFromDock
+    {
+        get => _isRestoringFromDock;
+        set => _isRestoringFromDock = value;
+    }
+
+    private enum DockEdge { None, Left, Top, Right, Bottom }
+
+    public MainWindow(MacConfigService configService, AppConfig config, IBalanceProvider provider)
+    {
+        InitializeComponent();
+        _configService = configService;
+        _config = config;
+        _provider = provider;
+        _openCodeProvider = new OpenCodeUsageProvider(_configService.GetOpenCodeApiKey());
+
+        ApplyAlwaysOnTop(_config.IsAlwaysOnTop);
+        _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(DeepSeekRefreshSeconds) };
+        _refreshTimer.Tick += async (_, _) => await RefreshAsync();
+        _codexTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(UsageRefreshSeconds) };
+        _codexTimer.Tick += async (_, _) => await RefreshCodexAsync();
+        _openCodeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(UsageRefreshSeconds) };
+        _openCodeTimer.Tick += async (_, _) => await RefreshOpenCodeAsync();
+        _peakTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(UsageRefreshSeconds) };
+        _peakTimer.Tick += (_, _) => RefreshPeakStatus();
+        _positionSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _positionSaveTimer.Tick += (_, _) => { _positionSaveTimer.Stop(); SaveWindowPosition(); };
+        _autoHideTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _autoHideTimer.Tick += (_, _) => AutoHideTimerTick();
+
+        Opened += OnOpened;
+        Closing += OnClosing;
+        PositionChanged += (_, _) => SchedulePositionSave();
+        PointerPressed += Window_PointerPressed;
+        PointerEntered += (_, _) =>
+        {
+            _pointerInside = true;
+            if (_config.EnableEdgeAutoHide) _autoHideTimer.Start();
+            if (_isEdgeHidden) SetDockPosition(hidden: false);
+        };
+        PointerExited += (_, _) => _pointerInside = false;
+        PointerMoved += Window_PointerMoved;
+
+        ApplyMiniMode(_config.UseMiniMode);
+        ApplyMonitoringVisibility();
+        UpdateAlwaysOnTopButton();
+        UpdateEdgeAutoHideButton();
+    }
+
+    private void OnOpened(object? sender, EventArgs e)
+    {
+        Debug.WriteLine($"[DockLifecycle] OnOpened entry visible={IsVisible} position={Position} restoring={_isRestoringFromDock}");
+        Console.Error.WriteLine($"[DockLifecycle] OnOpened entry visible={IsVisible} position={Position} restoring={_isRestoringFromDock}");
+        // The native NSWindow handle is normally unavailable in the
+        // constructor, so reapply the configured level once it is opened.
+        ApplyNativeWindowLevel(_config.IsAlwaysOnTop);
+        RestorePosition();
+        _menuBarBalance ??= MacMenuBarBalance.Create(RestoreAndActivate);
+        RefreshMenuBar();
+        RefreshPeakStatus();
+        if (_config.EnableDeepSeekMonitoring) _refreshTimer.Start();
+        _peakTimer.Start();
+        if (_config.EnableCodexMonitoring) _codexTimer.Start();
+        if (_config.EnableOpenCodeMonitoring) _openCodeTimer.Start();
+        if (_config.EnableDeepSeekMonitoring) _ = RefreshAsync();
+        if (_config.EnableCodexMonitoring) _ = RefreshCodexAsync();
+        if (_config.EnableOpenCodeMonitoring) _ = RefreshOpenCodeAsync();
+        if (!_isRestoringFromDock) _autoHideTimer.Start();
+        Debug.WriteLine($"[DockLifecycle] OnOpened exit visible={IsVisible} position={Position} restoring={_isRestoringFromDock}");
+        Console.Error.WriteLine($"[DockLifecycle] OnOpened exit visible={IsVisible} position={Position} restoring={_isRestoringFromDock}");
+    }
+
+    private void RestorePosition()
+    {
+        if (_config.WindowLeft is double left && _config.WindowTop is double top)
+            SetPosition(left, top);
+        else
+            SetPosition(WorkArea().Right - WindowWidth() - 24, WorkArea().Bottom - WindowHeight() - 24);
+        ClampToWorkArea();
+    }
+
+    private PixelRect WorkArea()
+    {
+        // Primary is not necessarily the display currently containing the
+        // window. ScreenFromWindow keeps edge docking correct on multi-monitor
+        // Mac setups as well.
+        var area = Screens.ScreenFromWindow(this)?.WorkingArea
+            ?? Screens.Primary?.WorkingArea
+            ?? new PixelRect(0, 0, 1920, 1080);
+        Debug.WriteLine($"[EdgeAutoHide] WorkArea={area} Position={Position} RenderScaling={RenderScaling:0.##}");
+        return area;
+    }
+
+    private double WindowScale() => RenderScaling > 0 ? RenderScaling : 1;
+    private int WindowWidth() => Math.Max(1, (int)Math.Round(Bounds.Width * WindowScale()));
+    private int WindowHeight() => Math.Max(1, (int)Math.Round(Bounds.Height * WindowScale()));
+
+    private void SetPosition(double left, double top)
+    {
+        _suppressPositionSave = true;
+        try { Position = new PixelPoint((int)Math.Round(left), (int)Math.Round(top)); }
+        finally { _suppressPositionSave = false; }
+    }
+
+    private void ClampToWorkArea()
+    {
+        var area = WorkArea();
+        SetPosition(
+            Math.Clamp(Position.X, area.X, Math.Max(area.X, area.Right - WindowWidth())),
+            Math.Clamp(Position.Y, area.Y, Math.Max(area.Y, area.Bottom - WindowHeight())));
+    }
+
+    private void SchedulePositionSave()
+    {
+        if (_suppressPositionSave) return;
+        _positionSaveTimer.Stop();
+        _positionSaveTimer.Start();
+    }
+
+    private void SaveWindowPosition()
+    {
+        PixelPoint position = _isEdgeHidden ? VisibleDockPosition() : Position;
+        _config.WindowLeft = position.X;
+        _config.WindowTop = position.Y;
+        _configService.Save(_config);
+    }
+
+    private void ApplyMiniMode(bool mini)
+    {
+        _isMini = mini;
+        Card.IsVisible = !mini;
+        MiniCard.IsVisible = mini;
+        // The detailed-card refresh action is not part of the capsule. Keep it
+        // collapsed in mini mode so it can never reserve layout space.
+        RefreshButton.IsVisible = !mini;
+        // Re-enable content sizing after a mode switch so the visible Card/MiniCard
+        // determines the native window bounds on Avalonia as it does on WPF.
+        SizeToContent = SizeToContent.WidthAndHeight;
+        // MiniCard has no fixed Width in XAML. Reset it explicitly as well so a
+        // previous measured size can never constrain the content-driven layout.
+        if (mini) MiniCard.Width = double.NaN;
+        RearrangeMiniBlocks();
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_dockEdge != DockEdge.None) SetDockPosition(_isEdgeHidden);
+            else ClampToWorkArea();
+        });
+    }
+
+    private void RearrangeMiniBlocks()
+    {
+        var blocks = new Dictionary<string, Control>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["deepseek"] = MiniDeepSeekBlock,
+            ["chatgpt"] = MiniGptBlock,
+            ["opencode"] = MiniOpenCodeBlock,
+            ["workbuddy"] = MiniWorkbuddyBlock
+        };
+        var order = (_config.AgentOrder ?? new List<string>())
+            .Concat(new[] { "deepseek", "chatgpt", "opencode", "workbuddy" })
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+        int index = 0;
+        foreach (string key in order)
+        {
+            if (!blocks.TryGetValue(key, out var block) || !block.IsVisible) continue;
+            MiniContentPanel.Children.Remove(block);
+            MiniContentPanel.Children.Insert(index++, block);
+        }
+    }
+
+    private void ApplyMonitoringVisibility()
+    {
+        BalancePanel.IsVisible = _config.EnableDeepSeekMonitoring;
+        CodexPanel.IsVisible = _config.EnableCodexMonitoring;
+        OpenCodePanel.IsVisible = _config.EnableOpenCodeMonitoring;
+        WorkbuddyPanel.IsVisible = _config.EnableWorkbuddyMonitoring;
+        MiniDeepSeekBlock.IsVisible = _config.EnableDeepSeekMonitoring;
+        MiniGptBlock.IsVisible = _config.EnableCodexMonitoring;
+        MiniOpenCodeBlock.IsVisible = _config.EnableOpenCodeMonitoring;
+        MiniWorkbuddyBlock.IsVisible = _config.EnableWorkbuddyMonitoring;
+        _refreshTimer.IsEnabled = _config.EnableDeepSeekMonitoring;
+        _codexTimer.IsEnabled = _config.EnableCodexMonitoring;
+        _openCodeTimer.IsEnabled = _config.EnableOpenCodeMonitoring;
+        RearrangeMiniBlocks();
+    }
+
+    private async void Refresh_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (_config.EnableDeepSeekMonitoring) await RefreshAsync();
+        if (_config.EnableCodexMonitoring) await RefreshCodexAsync();
+        if (_config.EnableOpenCodeMonitoring) await RefreshOpenCodeAsync();
+    }
+
+    private async void Settings_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (_isEdgeHidden) SetDockPosition(hidden: false);
+        _isSettingsOpen = true;
+        bool saved;
+        try { saved = await new SettingsWindow(_configService, _config, ApplySettingsImmediately).ShowDialog<bool>(this); }
+        finally { _isSettingsOpen = false; }
+        if (!saved) return;
+
+        ApplySettingsImmediately();
+        if (_provider is DeepSeekApiClient)
+            _provider = new DeepSeekApiClient(_configService.GetApiKey() ?? string.Empty);
+        if (_openCodeProvider is IDisposable disposable) disposable.Dispose();
+        _openCodeProvider = new OpenCodeUsageProvider(_configService.GetOpenCodeApiKey());
+        RefreshPeakStatus();
+        if (_config.EnableDeepSeekMonitoring) await RefreshAsync();
+        if (_config.EnableCodexMonitoring) await RefreshCodexAsync();
+        if (_config.EnableOpenCodeMonitoring) await RefreshOpenCodeAsync();
+    }
+
+    private void ApplySettingsImmediately()
+    {
+        ApplyAlwaysOnTop(_config.IsAlwaysOnTop);
+        ApplyMiniMode(_config.UseMiniMode);
+        ApplyMonitoringVisibility();
+        UpdateAlwaysOnTopButton();
+        RefreshPeakStatus();
+    }
+
+    private void AlwaysOnTop_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        ApplyAlwaysOnTop(!Topmost);
+        _config.IsAlwaysOnTop = Topmost;
+        _configService.Save(_config);
+        UpdateAlwaysOnTopButton();
+    }
+
+    private IntPtr NativeHandle => TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+
+    private void ApplyAlwaysOnTop(bool topmost)
+    {
+        Topmost = topmost;
+        if (!OperatingSystem.IsMacOS()) return;
+
+        // Keep Avalonia's state synchronized for bindings and other platform
+        // implementations, then enforce the native level on macOS.
+        this.SetCurrentValue(TopmostProperty, topmost);
+        ApplyNativeWindowLevel(topmost);
+    }
+
+    private void ApplyNativeWindowLevel(bool topmost)
+    {
+        if (!OperatingSystem.IsMacOS()) return;
+
+        IntPtr nativeHandle = NativeHandle;
+        if (nativeHandle == IntPtr.Zero) return;
+
+        IntPtr setLevelSelector = sel_registerName("setLevel:");
+        objc_msgSend_setLevel(
+            nativeHandle,
+            setLevelSelector,
+            topmost ? NSFloatingWindowLevel : NSNormalWindowLevel);
+    }
+
+    private void MiniMode_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        ApplyMiniMode(true);
+        _config.UseMiniMode = true;
+        _configService.Save(_config);
+    }
+
+    private void UpdateAlwaysOnTopButton()
+    {
+        string text = Topmost ? "置顶✓" : "置顶";
+        AlwaysOnTopBtn.Content = text;
+        CardPinBtn.Content = text;
+        CardMiniBtn.Content = _isMini ? "展开" : "迷你";
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (!_config.EnableDeepSeekMonitoring || _refreshing) return;
+        _refreshing = true;
+        try
+        {
+            ErrorText.Text = string.Empty;
+            var parsed = BalanceParser.Parse(await _provider.GetBalanceJsonAsync(_cancellation.Token));
+            if (!parsed.Success) throw new InvalidOperationException(parsed.Error);
+            var selected = CurrencySelector.Select(parsed.Balances, _config.SelectedCurrency);
+            if (!selected.Found || selected.Balance is null)
+                throw new InvalidOperationException($"未找到 {_config.SelectedCurrency} 余额");
+
+            var balance = selected.Balance;
+            decimal? change = BalanceChangeCalculator.Change(_previousBalance, balance.Total);
+            _previousBalance = balance.Total;
+            _latestBalance = balance;
+            string amount = Symbol(balance.Currency) + balance.Total.ToString("0.00");
+            BalanceText.Text = amount;
+            MiniBalanceText.Text = amount;
+            ChangeText.Text = change is null ? "首次刷新" : $"变动 {(change >= 0 ? "+" : string.Empty)}{change:0.00}";
+            MiniChangeText.Text = change is null ? string.Empty : $"{(change >= 0 ? "+" : string.Empty)}{change:0.00}";
+            BreakdownText.Text = $"充值 {balance.ToppedUp:0.00} · 赠送 {balance.Granted:0.00}";
+            StatusDot.Foreground = ThemeBrush(balance.IsAvailable ? "SuccessBrush" : "ErrorBrush");
+            StatusText.Text = balance.IsAvailable ? "账户正常" : "账户不可用";
+            UpdateRefreshTime();
+            UpdateMenuBar(amount, $"DeepSeek 余额：{balance.Total:0.00} {balance.Currency}\n上次更新：{DateTime.Now:HH:mm:ss}");
+            _config.LastSuccessfulBalance = balance.Total;
+            _config.LastSuccessfulRefreshUtc = DateTimeOffset.UtcNow;
+            _configService.Save(_config);
+        }
+        catch (OperationCanceledException) { }
+        catch (ApiException ex) { ShowError(ex.IsAuthFailure ? "认证失败：请在设置中检查 API Key" : ex.Message); }
+        catch (Exception ex) { ShowError("刷新失败：" + ex.Message); }
+        finally { _refreshing = false; }
+    }
+
+    private async Task RefreshCodexAsync()
+    {
+        if (!_config.EnableCodexMonitoring || _codexRefreshing) return;
+        _codexRefreshing = true;
+        try
+        {
+            var accounts = await _codexProvider.GetUsagesAsync(_cancellation.Token);
+            ApplyCodexUsages(accounts);
+            _menuBarCodexText = FormatMenuBarCodex(accounts);
+            _menuBarCodexTooltip = accounts.Count == 0 ? "未找到可用的 CC Switch 账号" : string.Join(Environment.NewLine, accounts.Take(2).Select(FormatAccount));
+            UpdateRefreshTime();
+            RefreshMenuBar();
+        }
+        catch (OperationCanceledException) { }
+        catch
+        {
+            CodexText.Text = "暂时无法读取 ChatGPT Plus 用量";
+            ClearMiniGptRows();
+            _menuBarCodexText = "--";
+            _menuBarCodexTooltip = "ChatGPT Plus：暂时无法读取额度";
+            UpdateRefreshTime();
+            RefreshMenuBar();
+        }
+        finally { _codexRefreshing = false; }
+    }
+
+    private void ApplyCodexUsages(IReadOnlyList<CodexAccountUsageSnapshot> usages)
+    {
+        var accounts = usages.Take(2).ToArray();
+        CodexText.Text = accounts.Length == 0
+            ? "未找到可用的 CC Switch 账号"
+            : string.Join(Environment.NewLine, accounts.Select(FormatAccount));
+        ClearMiniGptRows();
+        if (accounts.Length > 0) ApplyCodexAccount(accounts[0], MiniGptA1Label, MiniGptA1Five, MiniGptA1FiveCd, MiniGptA1Weekly, MiniGptA1WeeklyCd);
+        if (accounts.Length > 1) ApplyCodexAccount(accounts[1], MiniGptA2Label, MiniGptA2Five, MiniGptA2FiveCd, MiniGptA2Weekly, MiniGptA2WeeklyCd);
+    }
+
+    private static void ApplyCodexAccount(CodexAccountUsageSnapshot account, TextBlock label, TextBlock five, TextBlock fiveCd, TextBlock weekly, TextBlock weeklyCd)
+    {
+        label.Text = account.MiniLabel;
+        if (!account.Usage.IsAvailable || account.Usage.Windows.Count == 0) return;
+        var windows = account.Usage.Windows.OrderBy(w => w.DurationMinutes ?? int.MaxValue).ToArray();
+        var now = DateTimeOffset.Now;
+        var first = windows[0];
+        five.Text = $"{first.RemainingPercent}%";
+        fiveCd.Text = CodexUsageFormatter.FormatCountdownShort(first.ResetsAt, now);
+        if (windows.Length > 1)
+        {
+            weekly.Text = $"{windows[1].RemainingPercent}%";
+            weeklyCd.Text = CodexUsageFormatter.FormatCountdownShort(windows[1].ResetsAt, now);
+        }
+    }
+
+    private void ClearMiniGptRows()
+    {
+        foreach (var text in new[] { MiniGptA1Label, MiniGptA1Five, MiniGptA1FiveCd, MiniGptA1Weekly, MiniGptA1WeeklyCd,
+            MiniGptA2Label, MiniGptA2Five, MiniGptA2FiveCd, MiniGptA2Weekly, MiniGptA2WeeklyCd }) text.Text = "--";
+    }
+
+    private async Task RefreshOpenCodeAsync()
+    {
+        if (!_config.EnableOpenCodeMonitoring || _openCodeRefreshing) return;
+        _openCodeRefreshing = true;
+        try
+        {
+            ApplyOpenCodeUsage(await _openCodeProvider.GetUsageAsync(_cancellation.Token));
+            UpdateRefreshTime();
+            RefreshMenuBar();
+        }
+        catch (OperationCanceledException) { }
+        catch
+        {
+            ApplyOpenCodeUsage(OpenCodeUsageSnapshot.Unavailable("刷新失败"));
+            UpdateRefreshTime();
+            RefreshMenuBar();
+        }
+        finally { _openCodeRefreshing = false; }
+    }
+
+    private void ApplyOpenCodeUsage(OpenCodeUsageSnapshot snapshot)
+    {
+        if (!snapshot.IsAvailable)
+        {
+            string reason = snapshot.Error ?? "暂不可用";
+            OpenCodeTitleText.Text = $"OpenCode Go 额度（{reason}）";
+            OpenCodeText.Text = reason;
+            MiniOcLabel.Foreground = ThemeBrush("WarningBrush");
+            ClearOpenCodeRows();
+            _menuBarOpenCodeText = "--";
+            _menuBarOpenCodeTooltip = "OpenCode Go：" + reason;
+            return;
+        }
+
+        OpenCodeTitleText.Text = "OpenCode Go 额度";
+        OpenCodeText.Text = string.Join(Environment.NewLine, snapshot.Windows.Select(window =>
+            $"{OpenCodeUsageFormatter.ShortLabelOf(window.Kind)}：剩余 {window.RemainingPercent}% · 恢复 {OpenCodeUsageFormatter.FormatCountdown(window, DateTimeOffset.Now)}"));
+        MiniOcLabel.Foreground = ThemeBrush("TextMainBrush");
+        var byKind = snapshot.Windows.ToDictionary(window => window.Kind);
+        ApplyOpenCodeRow(byKind.GetValueOrDefault("rolling"), MiniOcFivePct, MiniOcFiveCd, MiniOcFiveBarFill);
+        ApplyOpenCodeRow(byKind.GetValueOrDefault("weekly"), MiniOcWeeklyPct, MiniOcWeeklyCd, MiniOcWeeklyBarFill);
+        ApplyOpenCodeRow(byKind.GetValueOrDefault("monthly"), MiniOcMonthlyPct, MiniOcMonthlyCd, MiniOcMonthlyBarFill);
+        _menuBarOpenCodeText = snapshot.Windows.Count == 0 ? "--" : string.Join("/", snapshot.Windows.Select(w => w.RemainingPercent)) + "%";
+        _menuBarOpenCodeTooltip = OpenCodeText.Text ?? string.Empty;
+    }
+
+    private static void ApplyOpenCodeRow(OpenCodeUsageWindow? window, TextBlock pct, TextBlock countdown, Border barFill)
+    {
+        if (window is null)
+        {
+            pct.Text = countdown.Text = "--";
+            barFill.Width = 0;
+            return;
+        }
+        pct.Text = $"{window.RemainingPercent}%";
+        countdown.Text = OpenCodeUsageFormatter.FormatCountdownShort(window, DateTimeOffset.Now);
+        const double maximum = 100d;
+        var value = Math.Clamp(window.RemainingPercent, 0, maximum);
+        barFill.Width = value / maximum * 34d;
+        var color = value < 20
+            ? Color.FromRgb(0xE2, 0x4B, 0x4A)
+            : value <= 70
+                ? Color.FromRgb(0xEF, 0x9F, 0x27)
+                : Color.FromRgb(0x78, 0xD7, 0x9A);
+        barFill.Background = new SolidColorBrush(color);
+    }
+
+    private void ClearOpenCodeRows()
+    {
+        ApplyOpenCodeRow(null, MiniOcFivePct, MiniOcFiveCd, MiniOcFiveBarFill);
+        ApplyOpenCodeRow(null, MiniOcWeeklyPct, MiniOcWeeklyCd, MiniOcWeeklyBarFill);
+        ApplyOpenCodeRow(null, MiniOcMonthlyPct, MiniOcMonthlyCd, MiniOcMonthlyBarFill);
+    }
+
+    private void RefreshPeakStatus()
+    {
+        bool isPeak = PeakHourCalculator.IsPeak(DateTime.Now, _config.PeakHourRanges);
+        bool visible = _config.EnableDeepSeekMonitoring && _config.ShowPeakIndicator;
+        PeakText.IsVisible = visible;
+        PeakText.Text = isPeak ? "● 预计高峰时段" : "● 预计非高峰时段";
+        PeakText.Foreground = ThemeBrush(isPeak ? "PeakWarningBrush" : "PeakSuccessBrush");
+        MiniPeakDot.IsVisible = visible;
+        MiniPeakLabel.IsVisible = visible;
+        MiniPeakDot.Foreground = ThemeBrush(isPeak ? "PeakWarningBrush" : "PeakSuccessBrush");
+        MiniPeakLabel.Text = isPeak ? "高峰" : "非高峰";
+        _menuBarPeakText = isPeak ? "峰" : "谷";
+        RefreshMenuBar();
+    }
+
+    private void UpdateRefreshTime()
+    {
+        string value = DateTime.Now.ToString("HH:mm:ss");
+        RefreshTimeText.Text = "上次刷新：" + value;
+        MiniRefreshTimeText.Text = "刷新 " + value;
+    }
+
+    private void Window_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed || IsButtonSource(e.Source)) return;
+        var now = DateTime.UtcNow;
+        bool doubleClick = now - _lastPointerPressUtc < TimeSpan.FromMilliseconds(400);
+        _lastPointerPressUtc = now;
+        if (doubleClick)
+        {
+            ApplyMiniMode(false);
+            _config.UseMiniMode = false;
+            _configService.Save(_config);
+            return;
+        }
+        _autoHideTimer.Stop();
+        if (_isEdgeHidden) SetDockPosition(hidden: false);
+        _isDragging = true;
+        _dockEdge = DockEdge.None;
+        try { BeginMoveDrag(e); }
+        catch (InvalidOperationException) { }
+        finally
+        {
+            _isDragging = false;
+            if (_config.EnableEdgeAutoHide)
+            {
+                // macOS can keep the pointer inside the window after the
+                // native BeginMoveDrag completes and does not always emit a
+                // matching PointerExited event. Evaluate once after the
+                // native move has committed instead of waiting for a hover
+                // event that may never arrive.
+                _pointerInside = false;
+                _autoHideTimer.Start();
+                Dispatcher.UIThread.Post(() => EvaluateEdgeAutoHide(force: true));
+            }
+        }
+    }
+
+    private void Window_PointerMoved(object? sender, PointerEventArgs e)
+    {
+        _pointerInside = true;
+        Debug.WriteLine($"[EdgeAutoHide] PointerMoved position={Position} dragging={_isDragging} hidden={_isEdgeHidden}");
+        if (_isEdgeHidden) SetDockPosition(hidden: false);
+    }
+
+    private static bool IsButtonSource(object? source)
+    {
+        for (var visual = source as Visual; visual is not null; visual = visual.Parent as Visual)
+            if (visual is Button) return true;
+        return false;
+    }
+
+    private void Hide_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Hide();
+
+    private void MiniEdgeAutoHideBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        _config.EnableEdgeAutoHide = !_config.EnableEdgeAutoHide;
+        _configService.Save(_config);
+        UpdateEdgeAutoHideButton();
+        if (_config.EnableEdgeAutoHide) _autoHideTimer.Start();
+        else
+        {
+            _autoHideTimer.Stop();
+            if (_isEdgeHidden) SetDockPosition(hidden: false);
+        }
+    }
+
+    private void UpdateEdgeAutoHideButton() => MiniEdgeAutoHideBtn.Content = _config.EnableEdgeAutoHide ? "贴边✓" : "贴边";
+    private void MiniMinBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Hide();
+
+    public void BringToFront()
+    {
+        Debug.WriteLine($"[DockLifecycle] BringToFront entry visible={IsVisible} loaded={IsLoaded} state={WindowState} position={Position} restoring={_isRestoringFromDock}");
+        Console.Error.WriteLine($"[DockLifecycle] BringToFront entry visible={IsVisible} loaded={IsLoaded} state={WindowState} position={Position} restoring={_isRestoringFromDock}");
+        _autoHideTimer.Stop();
+        bool wasRestoringFromDock = _isRestoringFromDock;
+        _isRestoringFromDock = true;
+        try
+        {
+            // Show() is only needed after Hide(). Calling it for an already
+            // visible edge-hidden window can raise Opened and asynchronously
+            // restore the old off-screen position over this restore operation.
+            if (!IsVisible)
+                Show();
+            // Show() can raise OnOpened, which starts the periodic edge check
+            // for ordinary opens. Keep it disabled throughout dock restore.
+            _autoHideTimer.Stop();
+            WindowState = WindowState.Normal;
+            IsVisible = true;
+
+            // Avalonia's Activate() maps to the native macOS activation path. A
+            // temporary Topmost elevation also handles borderless windows that
+            // macOS otherwise leaves behind the currently focused application.
+            bool wasTopmost = Topmost;
+            if (!wasTopmost)
+                ApplyAlwaysOnTop(true);
+            else
+                ApplyNativeWindowLevel(true);
+            Activate();
+            if (!wasTopmost)
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    ApplyAlwaysOnTop(_config.IsAlwaysOnTop);
+                    Activate();
+                });
+            }
+
+        }
+        finally
+        {
+            _isRestoringFromDock = wasRestoringFromDock;
+            Debug.WriteLine($"[DockLifecycle] BringToFront exit visible={IsVisible} loaded={IsLoaded} state={WindowState} position={Position} restoring={_isRestoringFromDock}");
+            Console.Error.WriteLine($"[DockLifecycle] BringToFront exit visible={IsVisible} loaded={IsLoaded} state={WindowState} position={Position} restoring={_isRestoringFromDock}");
+        }
+    }
+
+    public void RestoreAndActivate()
+    {
+        Debug.WriteLine($"[DockLifecycle] RestoreAndActivate entry visible={IsVisible} position={Position}");
+        Console.Error.WriteLine($"[DockLifecycle] RestoreAndActivate entry visible={IsVisible} position={Position}");
+        BringToFront();
+        if (_isEdgeHidden) SetDockPosition(hidden: false);
+        Debug.WriteLine($"[DockLifecycle] RestoreAndActivate exit visible={IsVisible} position={Position}");
+        Console.Error.WriteLine($"[DockLifecycle] RestoreAndActivate exit visible={IsVisible} position={Position}");
+    }
+
+    private void MiniCloseBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            desktop.Shutdown();
+        else
+            Close();
+    }
+
+    private void OnClosing(object? sender, WindowClosingEventArgs e)
+    {
+        Debug.WriteLine($"[DockLifecycle] OnClosing entry reason={e.CloseReason} visible={IsVisible} loaded={IsLoaded} restoring={_isRestoringFromDock}");
+        Console.Error.WriteLine($"[DockLifecycle] OnClosing entry reason={e.CloseReason} visible={IsVisible} loaded={IsLoaded} restoring={_isRestoringFromDock}");
+        if (_isRestoringFromDock)
+        {
+            e.Cancel = true;
+            Debug.WriteLine($"[DockLifecycle] OnClosing exit cancelled during restore reason={e.CloseReason} visible={IsVisible}");
+            Console.Error.WriteLine($"[DockLifecycle] OnClosing exit cancelled during restore reason={e.CloseReason} visible={IsVisible}");
+            return;
+        }
+        if (e.CloseReason is not WindowCloseReason.ApplicationShutdown and not WindowCloseReason.OSShutdown)
+        {
+            e.Cancel = true;
+            SaveWindowPosition();
+            Hide();
+            Debug.WriteLine($"[DockLifecycle] OnClosing exit cancelled and hidden reason={e.CloseReason} visible={IsVisible}");
+            Console.Error.WriteLine($"[DockLifecycle] OnClosing exit cancelled and hidden reason={e.CloseReason} visible={IsVisible}");
+            return;
+        }
+        _refreshTimer.Stop();
+        _codexTimer.Stop();
+        _openCodeTimer.Stop();
+        _peakTimer.Stop();
+        _positionSaveTimer.Stop();
+        _autoHideTimer.Stop();
+        _cancellation.Cancel();
+        SaveWindowPosition();
+        _cancellation.Dispose();
+        _menuBarBalance?.Dispose();
+        _menuBarBalance = null;
+        if (_codexProvider is IDisposable codex) codex.Dispose();
+        if (_openCodeProvider is IDisposable openCode) openCode.Dispose();
+        Debug.WriteLine($"[DockLifecycle] OnClosing exit shutdown reason={e.CloseReason} visible={IsVisible}");
+        Console.Error.WriteLine($"[DockLifecycle] OnClosing exit shutdown reason={e.CloseReason} visible={IsVisible}");
+    }
+
+    private DockEdge DetectDockEdge()
+    {
+        var area = WorkArea();
+        int left = Math.Abs(Position.X - area.X);
+        int top = Math.Abs(Position.Y - area.Y);
+        int right = Math.Abs(Position.X + WindowWidth() - area.Right);
+        int bottom = Math.Abs(Position.Y + WindowHeight() - area.Bottom);
+        var candidates = new[] { (DockEdge.Left, left), (DockEdge.Top, top), (DockEdge.Right, right), (DockEdge.Bottom, bottom) };
+        var nearest = candidates.OrderBy(item => item.Item2).First();
+        var edge = nearest.Item2 <= EdgeDetectionThreshold ? nearest.Item1 : DockEdge.None;
+        Debug.WriteLine(
+            $"[EdgeAutoHide] DetectDockEdge position={Position} size={WindowWidth()}x{WindowHeight()} " +
+            $"area={area} distances=L{left}/T{top}/R{right}/B{bottom} threshold={EdgeDetectionThreshold} result={edge}");
+        return edge;
+    }
+
+    private PixelPoint VisibleDockPosition()
+    {
+        var area = WorkArea();
+        int left = Math.Clamp(Position.X, area.X, Math.Max(area.X, area.Right - WindowWidth()));
+        int top = Math.Clamp(Position.Y, area.Y, Math.Max(area.Y, area.Bottom - WindowHeight()));
+        return _dockEdge switch
+        {
+            DockEdge.Left => new PixelPoint(area.X, top),
+            DockEdge.Top => new PixelPoint(left, area.Y),
+            DockEdge.Right => new PixelPoint(area.Right - WindowWidth(), top),
+            DockEdge.Bottom => new PixelPoint(left, area.Bottom - WindowHeight()),
+            _ => new PixelPoint(left, top)
+        };
+    }
+
+    private void SetDockPosition(bool hidden)
+    {
+        Debug.WriteLine($"[EdgeAutoHide] SetDockPosition requested hidden={hidden} edge={_dockEdge} position={Position} ui={Dispatcher.UIThread.CheckAccess()}");
+        if (_dockEdge == DockEdge.None) return;
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() => SetDockPosition(hidden));
+            return;
+        }
+        var visible = VisibleDockPosition();
+        var area = WorkArea();
+        PixelPoint target = hidden
+            ? _dockEdge switch
+            {
+                DockEdge.Left => new PixelPoint(area.X - WindowWidth() + (int)EdgeRevealThickness, visible.Y),
+                DockEdge.Top => new PixelPoint(visible.X, area.Y - WindowHeight() + (int)EdgeRevealThickness),
+                DockEdge.Right => new PixelPoint(area.Right - (int)EdgeRevealThickness, visible.Y),
+                DockEdge.Bottom => new PixelPoint(visible.X, area.Bottom - (int)EdgeRevealThickness),
+                _ => visible
+            }
+            : visible;
+        _suppressPositionSave = true;
+        try
+        {
+            Position = target;
+            _isEdgeHidden = hidden;
+            Debug.WriteLine($"[EdgeAutoHide] SetDockPosition applied target={target} hidden={hidden}");
+        }
+        finally { _suppressPositionSave = false; }
+    }
+
+    private void AutoHideTimerTick()
+    {
+        if (_isRestoringFromDock) return;
+        if (!_config.EnableEdgeAutoHide || !_isMini || _isDragging || _isSettingsOpen || _pointerInside) return;
+        if (_isEdgeHidden) return;
+        EvaluateEdgeAutoHide();
+    }
+
+    private void EvaluateEdgeAutoHide(bool force = false)
+    {
+        if (_isRestoringFromDock) return;
+        if (!_config.EnableEdgeAutoHide || !_isMini || _isDragging || _isSettingsOpen || !IsLoaded)
+            return;
+        if (!force && _pointerInside) return;
+
+        var edge = DetectDockEdge();
+        if (edge == DockEdge.None) return;
+        _dockEdge = edge;
+        SetDockPosition(hidden: true);
+        SaveWindowPosition();
+    }
+
+    private void ShowError(string message)
+    {
+        StatusDot.Foreground = ThemeBrush("ErrorBrush");
+        StatusText.Text = "需要注意";
+        ErrorText.Text = message;
+        UpdateRefreshTime();
+        UpdateMenuBar(_latestBalance is { } b ? Symbol(b.Currency) + b.Total.ToString("0.00") + " !" : "¥ --", "DeepSeek 余额读取失败：" + message);
+    }
+
+    private void UpdateMenuBar(string title, string tooltip)
+    {
+        _menuBarBalanceText = title;
+        _menuBarBalanceTooltip = tooltip;
+        RefreshMenuBar();
+    }
+
+    private void RefreshMenuBar()
+    {
+        var titleParts = new List<string>();
+        if (_config.EnableDeepSeekMonitoring)
+        {
+            titleParts.Add(_menuBarBalanceText);
+            if (_config.ShowPeakIndicator) titleParts.Add(_menuBarPeakText);
+        }
+        if (_config.EnableCodexMonitoring) titleParts.Add("GPT " + _menuBarCodexText);
+        if (_config.EnableOpenCodeMonitoring) titleParts.Add("OC " + _menuBarOpenCodeText);
+        if (_config.EnableWorkbuddyMonitoring) titleParts.Add("WB --");
+        if (titleParts.Count == 0) titleParts.Add("额度监测已关闭");
+        var tooltipParts = new List<string>();
+        if (_config.EnableDeepSeekMonitoring) tooltipParts.Add(_menuBarBalanceTooltip);
+        if (_config.EnableCodexMonitoring) tooltipParts.Add("ChatGPT Plus：" + _menuBarCodexTooltip);
+        if (_config.EnableOpenCodeMonitoring) tooltipParts.Add("OpenCode Go：" + _menuBarOpenCodeTooltip);
+        if (_config.EnableWorkbuddyMonitoring) tooltipParts.Add("WorkBuddy：暂无额度数据源");
+        _menuBarBalance?.Update(string.Join(" · ", titleParts), string.Join(Environment.NewLine, tooltipParts));
+    }
+
+    private static string FormatAccount(CodexAccountUsageSnapshot account)
+    {
+        if (!account.Usage.IsAvailable || account.Usage.Windows.Count == 0)
+            return account.Email + "：" + (account.RefreshError ?? account.Usage.Error ?? "暂不可用");
+        return account.Email + "：" + string.Join(Environment.NewLine,
+            account.Usage.Windows.OrderBy(w => w.DurationMinutes ?? int.MaxValue)
+                .Select(window => CodexUsageFormatter.FormatWindowRow(window, DateTimeOffset.Now)));
+    }
+
+    private static string FormatMenuBarCodex(IReadOnlyList<CodexAccountUsageSnapshot> accounts)
+    {
+        var windows = accounts.Where(a => a.Usage.IsAvailable).SelectMany(a => a.Usage.Windows).Take(2).ToArray();
+        return windows.Length == 0 ? "--" : string.Join("/", windows.Select(w => w.RemainingPercent)) + "%";
+    }
+
+    private static string Symbol(string currency) => currency.Equals("USD", StringComparison.OrdinalIgnoreCase) ? "$" : "¥";
+
+    private static IBrush ThemeBrush(string key) =>
+        Application.Current is { } application && application.TryFindResource(key, out object? resource)
+            && resource is IBrush brush
+            ? brush
+            : Brushes.Gray;
+}

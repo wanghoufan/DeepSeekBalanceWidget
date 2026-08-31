@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+import argparse, json, os, sys
+from datetime import datetime, timezone
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from promotion_queue_lib import update_queue
+
+def jsonl(path):
+    if not os.path.exists(path): return []
+    return [json.loads(x) for x in open(path,encoding='utf-8') if x.strip()]
+
+def find_event(root,eid):
+    p=os.path.join(root,'docs','learning','LEARNING_EVENTS.jsonl')
+    for e in reversed(jsonl(p)):
+        if e.get('event_id')==eid: return e
+    raise SystemExit('learning event not found')
+
+def pattern_record(root,cid):
+    p=os.path.join(root,'docs','learning','LEARNING_PATTERN_REGISTRY.yaml')
+    d=json.load(open(p,encoding='utf-8'))
+    return d.get('patterns',{}).get(cid,{})
+
+def route(root,e):
+    trigger=e.get('trigger')
+    n=int(e.get('recurrence_count',1))
+    reusable=bool(e.get('reusable',False))
+    proposed=e.get('candidate_type')
+    cid=e.get('canonical_pattern_id') or e.get('learning_pattern_id')
+    pref=pattern_record(root,cid).get('preferred_resolution','TEMPLATE')
+    stable_sop=bool(e.get('stable_multi_step_sop',False))
+
+    if proposed in {'RUNTIME_INCIDENT','MODEL_FACT'}:
+        target=proposed
+        escalation='DESKTOP_MAINTENANCE'
+    elif trigger=='RULE_VIOLATION':
+        target='GUARD_RULE'
+        escalation='MACHINE_ENFORCEMENT'
+    elif trigger=='USER_CORRECTION':
+        if n==1:
+            target='PROJECT_PATCH'
+            escalation='PROJECT_FIX'
+        elif n==2:
+            # Do not harden on the second correction.
+            target='TEMPLATE' if reusable else 'PROJECT_PATCH'
+            escalation='REUSABLE_CANDIDATE_ROOT_CAUSE_REVIEW'
+        else:
+            # Third recurrence means prompt-only handling failed. Use machine policy / canonical preference.
+            if pref in {'GUARD_RULE','CONTRACT_TEST','TOOL_CONSTRAINT'}:
+                target='GUARD_RULE'
+                escalation='GUARD_CONTRACT_TEST_TOOL_CONSTRAINT'
+            elif pref=='SKILL' or (stable_sop and proposed=='SKILL'):
+                target='SKILL'
+                escalation='SKILL_CANDIDATE'
+            else:
+                target='TEMPLATE'
+                escalation='TEMPLATE_OR_PROMPT_RULE'
+    elif trigger=='REPEATED_FAILURE':
+        if n>=3 and pref in {'GUARD_RULE','CONTRACT_TEST','TOOL_CONSTRAINT'}:
+            target='GUARD_RULE'; escalation='GUARD_CONTRACT_TEST_TOOL_CONSTRAINT'
+        elif stable_sop and reusable:
+            target='SKILL'; escalation='SKILL_CANDIDATE'
+        else:
+            target='TEMPLATE' if reusable else 'PROJECT_PATCH'
+            escalation='ROOT_CAUSE_REVIEW'
+    elif trigger in {'MANUAL_WORKAROUND','REUSABLE_PATTERN'}:
+        target='SKILL' if reusable and stable_sop else ('TEMPLATE' if reusable else 'PROJECT_PATCH')
+        escalation='SKILL_CANDIDATE' if target=='SKILL' else 'REUSABLE_CANDIDATE'
+    elif trigger=='TOKEN_WASTE':
+        target='TEMPLATE' if reusable else 'PROJECT_PATCH'; escalation='WORKFLOW_OPTIMIZATION'
+    else:
+        target=proposed if proposed in {'PROJECT_PATCH','GUARD_RULE','SKILL','TEMPLATE'} else 'PROJECT_PATCH'
+        escalation='PROJECT_FIX'
+
+    return {
+        'learning_event_id':e.get('event_id'),
+        'canonical_pattern_id':cid,
+        'routing_class':target,
+        'rule_escalation':escalation,
+        'recurrence_count':n,
+        'reusable':reusable,
+        'status':'ROUTED',
+        'routed_at':datetime.now(timezone.utc).isoformat()
+    }
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--repo-root',default='.')
+    ap.add_argument('--event-id',required=True)
+    ap.add_argument('--persist',action='store_true')
+    a=ap.parse_args()
+    root=os.path.abspath(a.repo_root)
+    out=route(root,find_event(root,a.event_id))
+    if a.persist: update_queue(root,out,'learning-router')
+    print(json.dumps(out,ensure_ascii=False))
+
+if __name__=='__main__': main()

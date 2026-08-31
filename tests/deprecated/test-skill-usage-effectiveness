@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+import json, os, shutil, subprocess, sys, tempfile
+BASE=os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..'))
+
+with tempfile.TemporaryDirectory() as d:
+    os.makedirs(os.path.join(d,'docs','learning')); os.makedirs(os.path.join(d,'docs','runtime')); os.makedirs(os.path.join(d,'docs','governance'))
+    shutil.copy2(os.path.join(BASE,'scripts','governance','lock_utils.py'),os.path.join(d,'lock_utils.py'))
+    # Scripts run from BASE but write to temp project.
+    json.dump({'project_id':'P2','origin_template_version':'2.3.1-template.3'},open(os.path.join(d,'docs','governance','PROJECT_GOVERNANCE_ORIGIN.yaml'),'w'))
+    reg={'skills':[{
+      'skill_id':'S1','status':'PRODUCTION','lifecycle_status':'INCLUDED_IN_TEMPLATE','path':'skills/s1.md',
+      'source_canonical_pattern_id':'UI_SCREENSHOT_FEEDBACK'
+    }]}
+    json.dump(reg,open(os.path.join(d,'docs','learning','SKILL_REGISTRY.yaml'),'w'))
+    json.dump({'patterns':{'UI_SCREENSHOT_FEEDBACK':{'canonical_id':'UI_SCREENSHOT_FEEDBACK','effectiveness':'UNKNOWN'}}},open(os.path.join(d,'docs','learning','LEARNING_PATTERN_REGISTRY.yaml'),'w'))
+    open(os.path.join(d,'docs','learning','SKILL_USAGE.jsonl'),'w').close(); open(os.path.join(d,'docs','learning','SKILL_EFFECTIVENESS.jsonl'),'w').close()
+    with open(os.path.join(d,'docs','runtime','TRUSTED_DISPATCH_IDENTITY.jsonl'),'w') as f:
+        f.write(json.dumps({'dispatch_id':'D1','worker_id':'W1','task_id':'T1','actual_role':'qa','loaded_skill_ids':['S1']})+'\n')
+
+    u=subprocess.run([sys.executable,'-S',os.path.join(BASE,'scripts','governance','record-skill-usage'),'--project-root',d,'--dispatch-id','D1','--skill-id','S1'],text=True,capture_output=True)
+    assert u.returncode==0,u.stderr
+    uid=json.loads(u.stdout)['usage_id']
+    e={'expected_outcome':'faster triage','actual_outcome':'faster triage','helped':True,'failure':False,'manual_intervention':False,'rework_count':0,'effectiveness_result':'EFFECTIVE'}
+    r=subprocess.run([sys.executable,'-S',os.path.join(BASE,'scripts','governance','record-skill-effectiveness'),'--project-root',d,'--dispatch-id','D1','--usage-id',uid],input=json.dumps(e),text=True,capture_output=True)
+    assert r.returncode==0,r.stderr
+    reg=json.load(open(os.path.join(d,'docs','learning','SKILL_REGISTRY.yaml')))
+    assert reg['skills'][0]['lifecycle_status']=='EFFECTIVENESS_RECORDED'
+    assert len(open(os.path.join(d,'docs','learning','SKILL_USAGE.jsonl')).read().splitlines())==1
+    assert len(open(os.path.join(d,'docs','learning','SKILL_EFFECTIVENESS.jsonl')).read().splitlines())==1
+print('PASS test-skill-usage-effectiveness')

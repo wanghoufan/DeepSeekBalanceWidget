@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+import argparse,json,os,sys
+sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
+from common import require_macos,which,run,sanitized_worker_command,extract,safe_codex_argv
+sys.path.insert(0,os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..','governance')))
+from internal_capability import verify_and_consume
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--project-root',required=True); ap.add_argument('--task-id',required=True)
+    ap.add_argument('--worktree',default='current'); ap.add_argument('--role',required=True)
+    ap.add_argument('--sandbox',required=True,choices=['read-only','workspace-write'])
+    ap.add_argument('--approval',required=True,choices=['never','on-request','untrusted'])
+    ap.add_argument('--cwd',required=True); ap.add_argument('--model')
+    ap.add_argument('--internal-token',required=True)
+    a=ap.parse_args(); require_macos()
+    claims={'task_id':a.task_id,'role':a.role,'sandbox':a.sandbox,'approval':a.approval}
+    try: verify_and_consume(a.project_root,a.internal_token,'MAC_LAUNCH_CODEX',claims)
+    except Exception as e: raise SystemExit('DENY: launcher capability invalid: '+str(e))
+    codex=which('codex'); orca=which('orca')
+    argv=[codex,'--sandbox',a.sandbox,'--ask-for-approval',a.approval,'-C',os.path.abspath(a.cwd)]
+    if a.model: argv.extend(['--model',a.model])
+    safe_codex_argv(argv)
+    cmd=sanitized_worker_command(argv)
+    term=run([orca,'terminal','create','--worktree',a.worktree,'--title',f'{a.role}:{a.task_id}','--command',cmd,'--json'],timeout=30,expect_json=True)
+    handle=extract(term,['terminalHandle','handle','terminal','id'])
+    if not handle: raise SystemExit('DENY: unable to resolve Orca terminal handle')
+    run([orca,'terminal','wait','--terminal',str(handle),'--for','tui-idle','--timeout-ms','60000','--json'],timeout=75,expect_json=True)
+    disp=run([orca,'orchestration','dispatch','--task',a.task_id,'--to',str(handle),'--inject','--json'],timeout=30,expect_json=True)
+    print(json.dumps({'backend':'codex','task_id':a.task_id,'terminal_handle':handle,'dispatch_receipt':disp,'effective_argv':argv},ensure_ascii=False))
+if __name__=='__main__': main()

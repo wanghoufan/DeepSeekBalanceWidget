@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""Real Mac positive smoke contract. Requires an Orca-managed bootstrap project."""
+import argparse,json,os,secrets,shlex,subprocess,sys,tempfile,time
+sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
+from common import require_macos,which,run
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--project-root',required=True)
+    ap.add_argument('--template-root',required=True)
+    ap.add_argument('--builder-model',required=True)
+    ap.add_argument('--backend',choices=['opencode','codex'],default='opencode')
+    ap.add_argument('--inside-orca-terminal',action='store_true',help=argparse.SUPPRESS)
+    ap.add_argument('--receipt-path',help=argparse.SUPPRESS)
+    a=ap.parse_args(); require_macos()
+    project=os.path.abspath(a.project_root); template=os.path.abspath(a.template_root)
+
+    # Orca derives dispatch authority from the calling terminal.  The public
+    # contract may be invoked by a normal shell, so bridge it into an
+    # Orca-managed terminal rather than pretending that external callers have
+    # a sender handle.
+    if not a.inside_orca_terminal:
+        orca=which('orca')
+        receipt=tempfile.NamedTemporaryFile(prefix='orca-positive-contract-',suffix='.json',delete=False)
+        receipt.close()
+        argv=[sys.executable,'-S',os.path.abspath(__file__),'--inside-orca-terminal',
+              '--project-root',project,'--template-root',template,
+              '--builder-model',a.builder_model,'--backend',a.backend,
+              '--receipt-path',receipt.name]
+        command=' '.join(shlex.quote(x) for x in argv)
+        create=[orca,'terminal','create','--worktree','path:'+project,
+                '--title','MAC_RUNTIME_V1 positive contract','--command',command,'--json']
+        try:
+            term=run(create,timeout=30,expect_json=True)
+        except Exception:
+            # A disposable Git project may not be registered with Orca yet.
+            run([orca,'repo','add','--path',project,'--json'],timeout=30,expect_json=True)
+            term=run(create,timeout=30,expect_json=True)
+        handle=(term.get('result') or term) if isinstance(term,dict) else term
+        from common import extract
+        terminal=extract(handle,['terminalHandle','handle','id'])
+        if not terminal:
+            raise SystemExit('FAIL: Orca did not return a terminal handle for Positive Contract')
+        # Managed terminals keep an idle shell alive after the command exits,
+        # and this Orca version may report `tui-idle` either before or after a
+        # one-shot child process publishes its result. The trusted receipt is
+        # therefore the only completion boundary for this contract.
+        receipt_wait_deadline=time.monotonic()+90
+        while not os.path.exists(receipt.name) or os.path.getsize(receipt.name)==0:
+            if time.monotonic() >= receipt_wait_deadline:
+                print(json.dumps({'mac_positive_contract':'FAIL','results':{
+                    'orchestrated_terminal':str(terminal),
+                    'exception':'receipt_wait_timeout'
+                }},ensure_ascii=False,indent=2))
+                return 6
+            time.sleep(1)
+        try:
+            out=json.load(open(receipt.name,encoding='utf-8'))
+        except Exception as e:
+            print(json.dumps({'mac_positive_contract':'FAIL','results':{'orchestrated_terminal':str(terminal),'exception':'missing structured receipt: '+str(e)}},ensure_ascii=False,indent=2))
+            return 6
+        finally:
+            if os.path.exists(receipt.name): os.unlink(receipt.name)
+        out.setdefault('results',{})['orchestrated_terminal']=str(terminal)
+        print(json.dumps(out,ensure_ascii=False,indent=2))
+        return 0 if out.get('mac_positive_contract')=='PASS' else 6
+
+    # The managed terminal is the trusted runtime boundary for this process.
+    if len(os.environ.get('ORCA_GOVERNANCE_INTERNAL_SECRET',''))<32:
+        os.environ['ORCA_GOVERNANCE_INTERNAL_SECRET']=secrets.token_hex(32)
+    results={}
+    try:
+        orca=which('orca')
+        status=run([orca,'status','--json'],expect_json=True,timeout=60)
+        runtime=(status.get('result') or {}).get('runtime') or {}
+        if runtime.get('state')!='ready' or runtime.get('reachable') is not True:
+            raise RuntimeError('ORCA runtime is not ready/reachable')
+        results['orca_status']=True
+        guide=run([orca,'skills','get','orchestration','--full'],timeout=20)
+        results['orchestration_guide']=all(x in guide for x in ['run-create','task-create','dispatch'])
+
+        guard=os.path.join(project,'scripts','governance','stale-template-guard')
+        sg=subprocess.run([sys.executable,'-S',guard,'--project-root',project,'--template-root',template],
+                          capture_output=True,text=True,timeout=20)
+        results['project_governance_current']=sg.returncode==0
+
+        req={
+          'project_root':project,'template_root':template,'role':'builder',
+          'backend':a.backend,'model':a.builder_model,'worktree':'current',
+          'objective':'MAC_RUNTIME_V1 positive contract',
+          'task_title':'Mac positive contract',
+          'task_type':'GENERAL','triggers':[],'capabilities':['read'],
+          'task_spec':'Do not modify files. Run git status, summarize the repository state, and complete with worker_done.'
+        }
+        f=tempfile.NamedTemporaryFile('w',suffix='.json',delete=False,encoding='utf-8')
+        json.dump(req,f); f.close()
+        env=os.environ.copy()
+        if len(env.get('ORCA_GOVERNANCE_INTERNAL_SECRET',''))<32:
+            raise RuntimeError('ORCA_GOVERNANCE_INTERNAL_SECRET must be set by trusted runtime')
+        adapter=os.path.join(os.path.dirname(__file__),'dispatch-worker')
+        rr=subprocess.run([sys.executable,'-S',adapter,'--request',f.name],env=env,
+                          capture_output=True,text=True,timeout=180)
+        os.unlink(f.name)
+        results['task_manager_dispatch_gateway']=rr.returncode==0
+        if rr.returncode==0:
+            d=json.loads(rr.stdout)
+            results['builder_dispatch']=bool(d.get('dispatch_id'))
+            results['trusted_loaded_skill_identity']=isinstance(d.get('loaded_skill_ids'),list)
+        else:
+            results['dispatch_error']=rr.stderr+rr.stdout
+    except Exception as e:
+        results['exception']=str(e)
+
+    bools=[v for v in results.values() if isinstance(v,bool)]
+    ok=bool(bools) and all(bools) and 'exception' not in results and 'dispatch_error' not in results
+    out={'mac_positive_contract':'PASS' if ok else 'FAIL','results':results}
+    if a.receipt_path:
+        with open(a.receipt_path,'w',encoding='utf-8') as f: json.dump(out,f,ensure_ascii=False,indent=2); f.write('\n')
+    print(json.dumps(out,ensure_ascii=False,indent=2))
+    return 0 if ok else 6
+
+if __name__=='__main__':
+    raise SystemExit(main())

@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+"""
+INTERNAL-ONLY queue writer. Agents must use request-promotion / learning-router /
+promotion-gateway. Direct calls require a scoped one-shot internal capability.
+"""
+import argparse, json, os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from promotion_queue_lib import update_queue
+from internal_capability import verify_and_consume
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--repo-root',default='.')
+    ap.add_argument('--internal-token',required=True)
+    ap.add_argument('--item-json')
+    a=ap.parse_args()
+    root=os.path.abspath(a.repo_root)
+    item=json.loads(a.item_json if a.item_json else sys.stdin.read())
+    eid=item.get('learning_event_id')
+    if not eid: raise SystemExit('DENY: missing learning_event_id')
+    try:
+        verify_and_consume(root,a.internal_token,'PROMOTION_QUEUE_WRITE',{
+          'learning_event_id':eid,
+          'status':item.get('status')
+        })
+    except Exception as e:
+        raise SystemExit('DENY: internal queue capability invalid: '+str(e))
+    print(json.dumps(update_queue(root,item,'promotion-queue-writer'),ensure_ascii=False))
+if __name__=='__main__': main()

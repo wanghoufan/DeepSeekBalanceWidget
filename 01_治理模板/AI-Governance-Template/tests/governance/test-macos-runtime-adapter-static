@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+import ast, importlib.util, json, os, sys
+
+BASE=os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..'))
+MAC=os.path.join(BASE,'scripts','runtime','macos')
+
+# Every shipped macOS adapter must parse as Python.
+pyfiles=[]
+for dp,dirs,fns in os.walk(MAC):
+    dirs[:]=[d for d in dirs if d!='__pycache__']
+    for fn in fns:
+        p=os.path.join(dp,fn)
+        if fn.endswith(('.json','.pyc','.md','.txt','.yaml','.yml')) or fn.startswith('.'):
+            continue
+        if not os.path.isfile(p):
+            continue
+        first=open(p,'rb').read(64)
+        is_python = fn.endswith('.py') or first.startswith(b'#!/usr/bin/env python') or first.startswith(b'#!/usr/bin/python')
+        if not is_python:
+            continue
+        pyfiles.append(p)
+        ast.parse(open(p,encoding='utf-8').read(),filename=p)
+assert pyfiles
+
+# Load common.py without site-packages.
+spec=importlib.util.spec_from_file_location('mac_common',os.path.join(MAC,'common.py'))
+m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+
+safe=['codex','--sandbox','read-only','--ask-for-approval','never']
+assert m.safe_codex_argv(safe) is True
+for bad in sorted(m.DANGEROUS_CODEX):
+    try:
+        m.safe_codex_argv(['codex','--sandbox','read-only','--ask-for-approval','never',bad])
+        raise AssertionError('dangerous flag allowed '+bad)
+    except RuntimeError:
+        pass
+
+# Task Manager profiles must be read-only and deny subagent/task execution.
+for fn in ['task-manager-v1.json','task-manager-v2.json']:
+    d=json.load(open(os.path.join(MAC,'opencode-profiles',fn),encoding='utf-8'))
+    text=json.dumps(d)
+    assert '"deny"' in text.lower()
+    assert 'edit' in text.lower()
+    assert ('task' in text.lower()) or ('subagent' in text.lower())
+
+# A mutable machine-local health receipt must not be mistaken for a static
+# source claim.  VERIFIED remains valid only when a migration audit attests it.
+health=json.load(open(os.path.join(BASE,'docs','runtime','macos-runtime-health.json'),encoding='utf-8'))
+if health.get('status')=='VERIFIED':
+    assert health.get('migration_audit')=='PASS'
+else:
+    assert health.get('status') in {'IMPLEMENTED_UNVERIFIED','HEALTHY_UNVERIFIED','HEALTHY_EXTERNAL','DEGRADED','UNRESOLVED_SANDBOX_CONFOUND','RUNTIME_BLOCKED'}
+
+cfg=json.load(open(os.path.join(BASE,'docs','runtime','MAC_RUNTIME_CONFIG.json'),encoding='utf-8'))
+assert cfg['target_os']=='macOS'
+assert cfg['deferred_adapters']==['windows','wsl']
+assert cfg['status']=='IMPLEMENTED_UNVERIFIED'
+
+# The verified OpenCode path must remain explicit: capability detection uses
+# the real subcommand; the launcher refreshes a runtime-scoped handle; Orca
+# tracks the Dispatch but delivers manually because this runtime cannot inject
+# into OpenCode; and terminal idle is the completion boundary.
+registry=json.load(open(os.path.join(BASE,'docs','runtime','WORKER_LAUNCH_REGISTRY.yaml'),encoding='utf-8'))
+opencode_registry=registry['profiles']['mac_opencode']
+assert opencode_registry['status']=='VERIFIED'
+assert opencode_registry['capability_detection']=='opencode run --help'
+assert opencode_registry['reacquire_terminal_handle_after_launch'] is True
+assert opencode_registry['direct_inject_support']=='UNSUPPORTED_CURRENTLY'
+assert opencode_registry['dispatch_mode']=='TRACKED_DISPATCH_THEN_TERMINAL_DELIVERY'
+assert opencode_registry['completion_signal']=='DISPATCH_RESULT_COMPLETE_AND_TERMINAL_IDLE'
+
+compat=json.load(open(os.path.join(BASE,'docs','governance','COMPATIBILITY_MATRIX.yaml'),encoding='utf-8'))
+assert compat['environment']['phase_1']['status']=='VERIFIED'
+contracts=compat['mac_runtime_contracts']
+assert contracts['opencode_terminal_delivery']=='VERIFIED'
+assert contracts['completion_on_terminal_close']=='INVALID'
+assert contracts['completion_on_dispatch_result_and_terminal_idle']=='VERIFIED'
+
+launch=open(os.path.join(MAC,'launch-opencode'),encoding='utf-8').read()
+dispatch=open(os.path.join(MAC,'dispatch-worker'),encoding='utf-8').read()
+positive=open(os.path.join(MAC,'positive-contract'),encoding='utf-8').read()
+canary=open(os.path.join(MAC,'permission-canary'),encoding='utf-8').read()
+audit=open(os.path.join(MAC,'migration-audit'),encoding='utf-8').read()
+approval=open(os.path.join(BASE,'scripts','governance','record-user-approval'),encoding='utf-8').read()
+approval_validator=open(os.path.join(BASE,'scripts','governance','validate-user-approval-receipt'),encoding='utf-8').read()
+gateway=open(os.path.join(BASE,'scripts','governance','promotion-gateway'),encoding='utf-8').read()
+health_script=open(os.path.join(MAC,'runtime-health-check'),encoding='utf-8').read()
+assert "'run','--help'" in health_script
+assert 'UNRESOLVED_SANDBOX_CONFOUND' in health_script
+assert 'EXTERNAL_TRUSTED_TERMINAL' in health_script
+assert '--external-evidence' in health_script
+audit_script=open(os.path.join(MAC,'migration-audit'),encoding='utf-8').read()
+assert '--external-evidence' in audit_script and '--evidence-context' in audit_script
+assert 'resolve_live_handle' in launch and "'terminal','send'" in launch
+assert "'--run',str(run_id)" in dispatch
+assert "if 'result' in obj" in open(os.path.join(MAC,'common.py'),encoding='utf-8').read()
+assert "'--for','tui-idle'" not in positive and "'--for','exit'" not in positive
+assert 'receipt_wait_timeout' in positive and 'time.monotonic()+90' in positive
+assert "--template-root" in canary and "'--template-root',template" in audit
+assert "sys.platform != 'darwin'" in approval
+assert 'trusted_user_origin' in approval and "'one_shot':True" in approval
+assert 'macos_osascript_dialog' in approval and 'osascript' in approval
+assert 'def applescript_string' in approval
+assert 'json.dumps(a.summary)' not in approval
+assert 'FileLock' in approval and 'TRUSTED_USER_APPROVAL_RECEIPTS.jsonl' in approval
+assert 'trusted_user_origin' in approval_validator and 'one_shot' in approval_validator
+assert 'expires_at' in approval_validator and 'receipt replay' in approval_validator
+assert "'RUNTIME_ADAPTER_FIX'" in gateway and 'HUMAN_GATED' in gateway
+assert 'approval_id' in gateway and 'validate_user_approval' in gateway
+assert 'RUNTIME_PREFIX' in gateway and 'bundle_hash' in gateway
+
+print('PASS test-macos-runtime-adapter-static')

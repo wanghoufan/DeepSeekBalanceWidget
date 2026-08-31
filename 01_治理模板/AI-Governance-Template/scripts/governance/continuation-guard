@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+import argparse, json, os, sys
+
+def load_json_or_yaml_json(path, default=None):
+    if not os.path.exists(path):
+        if default is not None: return default
+        raise FileNotFoundError(path)
+    txt=open(path,encoding='utf-8').read().strip()
+    try: return json.loads(txt)
+    except Exception:
+        # tiny YAML subset sufficient for our machine template
+        import yaml
+        return yaml.safe_load(txt)
+
+def jsonl(path):
+    if not os.path.exists(path): return []
+    return [json.loads(x) for x in open(path,encoding='utf-8') if x.strip()]
+
+def task_has_pass(root,task_id,commit_sha):
+    if not task_id: return False
+    for e in reversed(jsonl(os.path.join(root,'docs','progress','EVIDENCE.jsonl'))):
+        if e.get('task_id')!=task_id: continue
+        if commit_sha and e.get('commit_sha') not in (None,commit_sha): continue
+        if str(e.get('result','')).upper()=='PASS': return True
+    return False
+
+def all_p0_complete(gov):
+    items=gov.get('stage_p0',[])
+    return bool(items) and all(str(x.get('status','')).upper()=='COMPLETE' for x in items)
+
+def decide(root,req):
+    gov=load_json_or_yaml_json(os.path.join(root,'docs','progress','governance-state.yaml'))
+    rt=load_json_or_yaml_json(os.path.join(root,'docs','runtime','task-runtime.json'))
+    _health=load_json_or_yaml_json(os.path.join(root,'docs','runtime','runtime-health.json'),{})
+    task_id=rt.get('current_task_id') or gov.get('current_task_id')
+    task_status=str(rt.get('current_task_status','NONE')).upper()
+    p0_done=all_p0_complete(gov)
+    task_pass=task_has_pass(root,task_id,gov.get('commit_sha'))
+    terminal=task_status in {'PASS','COMPLETED','DONE','TERMINAL'}
+
+    if rt.get('trusted_user_session_pause') is True:
+        return {'decision':'SUSPEND_ALLOWED','code':'TRUSTED_USER_SESSION_PAUSE','requires_handoff':True,
+                'trusted_task_id':task_id,'trusted_task_status':task_status,'trusted_p0_complete':p0_done}
+    if rt.get('active_human_gate') is True:
+        return {'decision':'STOP_ALLOWED','code':'HUMAN_GATE'}
+    if rt.get('fix_budget_exhausted') is True:
+        return {'decision':'STOP_ALLOWED','code':'FIX_BUDGET_EXHAUSTED','requires_human_gate':True}
+    ext=rt.get('external_blocker') or {}
+    if ext.get('active') and ext.get('no_verified_fallback'):
+        return {'decision':'STOP_ALLOWED','code':'EXTERNAL_BLOCKER','reason':ext.get('reason')}
+    sb=rt.get('safety_block') or {}
+    if sb.get('active'):
+        return {'decision':'STOP_ALLOWED','code':'SAFETY_BLOCK','reason':sb.get('reason')}
+
+    if p0_done and (task_id is None or (terminal and task_pass)):
+        return {'decision':'STOP_ALLOWED','code':'GOAL_COMPLETE_TRUSTED',
+                'trusted_task_id':task_id,'trusted_task_status':task_status,'trusted_p0_complete':True}
+
+    contradictions=[]
+    if str(req.get('current_p0_status','')).upper()=='COMPLETE' and not p0_done:
+        contradictions.append('CLAIMED_P0_COMPLETE_NOT_SUPPORTED')
+    if str(req.get('current_task_status','')).upper() in {'COMPLETE','COMPLETED','DONE','PASS'} and not terminal:
+        contradictions.append('CLAIMED_TASK_COMPLETE_NOT_SUPPORTED')
+
+    if bool(req.get('stop_requested',False)):
+        return {'decision':'DENY_STOP','code':'CONTINUATION_VIOLATION','contradictions':contradictions,
+                'trusted_task_id':task_id,'trusted_task_status':task_status,'trusted_p0_complete':p0_done}
+    if not req.get('next_action'):
+        return {'decision':'CONTINUE_REQUIRED','code':'NEXT_ACTION_REQUIRED','contradictions':contradictions,
+                'trusted_task_id':task_id,'trusted_task_status':task_status,'trusted_p0_complete':p0_done}
+    return {'decision':'CONTINUE_REQUIRED','code':'WORK_REMAINS','next_action':req.get('next_action'),
+            'contradictions':contradictions,'trusted_task_id':task_id,
+            'trusted_task_status':task_status,'trusted_p0_complete':p0_done}
+
+def main():
+    ap=argparse.ArgumentParser(); ap.add_argument('--repo-root',default='.'); ap.add_argument('--input')
+    a=ap.parse_args()
+    raw=open(a.input,encoding='utf-8').read() if a.input else sys.stdin.read()
+    out=decide(os.path.abspath(a.repo_root),json.loads(raw or '{}'))
+    print(json.dumps(out,ensure_ascii=False))
+    if out['decision']=='DENY_STOP': sys.exit(2)
+    if out['decision']=='CONTINUE_REQUIRED': sys.exit(3)
+if __name__=='__main__': main()

@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+import importlib.machinery, importlib.util, json, os, stat, tempfile
+
+BASE=os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..'))
+HEALTH=os.path.join(BASE,'scripts','runtime','macos','runtime-health-check')
+loader=importlib.machinery.SourceFileLoader('runtime_health_check',HEALTH)
+spec=importlib.util.spec_from_loader('runtime_health_check',loader)
+m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+
+def status(app=True,state='ready',reachable=True,runtime_id='runtime-test'):
+    return {'result':{'app':{'running':app},'runtime':{'state':state,'reachable':reachable,'runtimeId':runtime_id}}}
+
+def terminal(ok=True):
+    return {'ok':ok,'result':{'terminals':[]}} if ok else {'ok':False,'error':{'code':'runtime_unavailable'}}
+
+# CASE A: trusted environment is healthy.
+a=m.classify_runtime_observation(status(),terminal(),'trusted-terminal')
+assert a['runtime_health']=='PASS'
+
+# CASE B: a sandbox observation is inconclusive, not a Runtime failure.
+b=m.classify_runtime_observation(status(False,'stale_bootstrap',False,None),terminal(False),'sandbox')
+assert b['runtime_health']=='UNRESOLVED_SANDBOX_CONFOUND'
+
+# CASE C: sandbox failure plus independent trusted evidence proves only health.
+with tempfile.TemporaryDirectory() as d:
+    p=os.path.join(d,'external-runtime.json')
+    with open(p,'w',encoding='utf-8') as f:
+        json.dump({'evidence_source':'EXTERNAL_TRUSTED_TERMINAL',
+                   'app':{'running':True},
+                   'runtime':{'state':'ready','reachable':True,'runtimeId':'external-runtime'},
+                   'terminal_list':{'ok':True,'result':{'terminals':[]}}},f)
+    os.chmod(p,stat.S_IRUSR|stat.S_IWUSR)
+    c=m.validate_external_evidence(p)
+    assert c['runtime_health']=='PASS'
+    assert c['evidence_source']=='EXTERNAL_TRUSTED_TERMINAL'
+    assert not any(k in c for k in {'dispatch_id','task_id','worker_id','validation_receipt','approval_id'})
+
+# CASE D: an explicitly trusted Terminal failure is a real Runtime block.
+d=m.classify_runtime_observation(status(False,'stale_bootstrap',False,None),terminal(False),'trusted-terminal')
+assert d['runtime_health']=='RUNTIME_BLOCKED'
+
+print('PASS test-runtime-health-evidence-contract')

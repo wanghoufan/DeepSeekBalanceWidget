@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""
+INTERNAL-ONLY Skill Registry writer.
+
+Direct Agent invocation is denied. Only Promotion Gateway may mint a scoped,
+one-shot internal capability and call this writer.
+"""
+import argparse, hashlib, json, os, sys
+from datetime import datetime, timezone
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lock_utils import FileLock, atomic_write_json
+from internal_capability import verify_and_consume
+
+def jsonl(p):
+    if not os.path.exists(p): return []
+    return [json.loads(x) for x in open(p,encoding='utf-8') if x.strip()]
+
+def validation(root,rid):
+    p=os.path.join(root,'docs','learning','VALIDATION_RECEIPTS.jsonl')
+    rs=[x for x in jsonl(p) if x.get('validation_receipt_id')==rid]
+    issued=next((x for x in rs if x.get('record_type')=='ISSUED'),None)
+    if not issued: raise SystemExit('DENY: validation receipt missing')
+    if any(x.get('record_type')=='CONSUMED' for x in rs):
+        raise SystemExit('DENY: validation receipt already consumed')
+    if issued.get('result')!='PASS':
+        raise SystemExit('DENY: validation result not PASS')
+    if issued.get('scope')!='SKILL_PROMOTION':
+        raise SystemExit('DENY: validation scope mismatch')
+    if issued.get('one_shot') is not True:
+        raise SystemExit('DENY: validation receipt must be one-shot')
+    from datetime import datetime, timezone
+    exp=issued.get('expires_at')
+    if exp and datetime.fromisoformat(exp)<datetime.now(timezone.utc):
+        raise SystemExit('DENY: validation receipt expired')
+    return issued
+
+def load_registry(path):
+    if not os.path.exists(path):
+        return {'schema_version':'2.3.1-self-learning-final','authoritative':True,'skills':[]}
+    return json.load(open(path,encoding='utf-8'))
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--project-root',required=True)
+    ap.add_argument('--template-root',required=True)
+    ap.add_argument('--promotion-id',required=True)
+    ap.add_argument('--actor-dispatch-id',required=True)
+    ap.add_argument('--validation-receipt-id',required=True)
+    ap.add_argument('--target-template-version',required=True)
+    ap.add_argument('--content-hash',required=True)
+    ap.add_argument('--internal-token',required=True)
+    ap.add_argument('--registration-json')
+    a=ap.parse_args()
+    project=os.path.abspath(a.project_root); template=os.path.abspath(a.template_root)
+
+    try:
+        verify_and_consume(project,a.internal_token,'REGISTER_SKILL',{
+          'promotion_id':a.promotion_id,
+          'validation_receipt_id':a.validation_receipt_id,
+          'content_hash':a.content_hash,
+          'actor_dispatch_id':a.actor_dispatch_id
+        })
+    except Exception as e:
+        raise SystemExit('DENY: internal register-skill capability invalid: '+str(e))
+
+    vr=validation(project,a.validation_receipt_id)
+    m=json.loads(a.registration_json if a.registration_json else sys.stdin.read())
+    required=['skill_id','path','trigger','task_types','applicable_roles','required_capabilities','required_tools',
+              'write_scope','shell_scope','network_scope','computer_use','destructive','risk_level',
+              'source_project_id','source_learning_event_id']
+    missing=[k for k in required if k not in m]
+    if missing: raise SystemExit('missing skill metadata: '+','.join(missing))
+
+    rel=str(m['path'])
+    if not rel.startswith('skills/') or '..' in rel.split('/'):
+        raise SystemExit('DENY: invalid skill path')
+    if vr.get('target')!=rel:
+        raise SystemExit('DENY: validation target does not match skill path')
+    if vr.get('target_hash')!=a.content_hash:
+        raise SystemExit('DENY: validation hash / transaction hash mismatch')
+
+    project_skill=os.path.join(project,rel)
+    template_skill=os.path.join(template,rel)
+    if not os.path.isfile(project_skill) or not os.path.isfile(template_skill):
+        raise SystemExit('DENY: promoted skill file missing from project/template')
+    for fp in (project_skill,template_skill):
+        hh=hashlib.sha256(open(fp,'rb').read()).hexdigest()
+        if hh!=a.content_hash:
+            raise SystemExit('DENY: promoted skill content hash mismatch')
+
+    if str(m['risk_level']).upper()!='LOW' or bool(m['destructive']):
+        raise SystemExit('DENY: non-low-risk skill requires Human Gate')
+    if str(m['write_scope']).upper() not in {'NONE','DOCUMENT_ONLY','PROJECT_LOCAL_LIMITED'}:
+        raise SystemExit('DENY: write scope too broad')
+    if str(m['shell_scope']).upper() not in {'NONE','READ_ONLY','SAFE_ALLOWLIST'}:
+        raise SystemExit('DENY: shell scope too broad')
+    if str(m['network_scope']).upper() not in {'NONE','READ_ONLY_APPROVED'}:
+        raise SystemExit('DENY: network scope too broad')
+
+    now=datetime.now(timezone.utc).isoformat()
+    record={
+      **m,
+      'status':'PRODUCTION',
+      'lifecycle_status':'INCLUDED_IN_TEMPLATE',
+      'validated_content_hash':a.content_hash,
+      'validated_receipt_id':a.validation_receipt_id,
+      'template_version':a.target_template_version,
+      'last_validated':vr.get('executed_at') or vr.get('issued_at'),
+      'first_promoted_at':m.get('first_promoted_at') or now,
+      'first_reused_project_id':m.get('first_reused_project_id'),
+      'registered_at':now,
+      'promotion_id':a.promotion_id,
+      'registered_by_actor_dispatch_id':a.actor_dispatch_id
+    }
+
+    paths=[
+      os.path.join(project,'docs','learning','SKILL_REGISTRY.yaml'),
+      os.path.join(template,'docs','learning','SKILL_REGISTRY.yaml')
+    ]
+    locks=[FileLock(p+'.lock','register-skill',timeout=5,stale_after=15) for p in sorted(paths)]
+    for l in locks: l.acquire()
+    try:
+        for p in paths:
+            data=load_registry(p); skills=data.setdefault('skills',[])
+            for i,s in enumerate(skills):
+                if s.get('skill_id')==record['skill_id']:
+                    skills[i]={**s,**record}; break
+            else:
+                skills.append(record)
+            atomic_write_json(p,data)
+    finally:
+        for l in reversed(locks): l.release()
+
+    print(json.dumps(record,ensure_ascii=False))
+
+if __name__=='__main__': main()

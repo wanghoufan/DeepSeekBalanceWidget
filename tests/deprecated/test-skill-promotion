@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+import hashlib, json, os, subprocess, sys, tempfile
+B=os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..'))
+PG=os.path.join(B,'scripts','governance','promotion-gateway'); VR=os.path.join(B,'scripts','governance','write-validation-receipt'); TS=os.path.join(B,'scripts','governance','template-sync')
+def h(p): return hashlib.sha256(open(p,'rb').read()).hexdigest()
+def dump(p,o): os.makedirs(os.path.dirname(p),exist_ok=True); json.dump(o,open(p,'w'))
+with tempfile.TemporaryDirectory() as d:
+    pr=os.path.join(d,'p'); tr=os.path.join(d,'t'); os.makedirs(pr); os.makedirs(os.path.join(tr,'docs','governance')); os.makedirs(os.path.join(tr,'template-meta'))
+    dump(os.path.join(tr,'docs','governance','TEMPLATE_VERSION.yaml'),{'schema_version':'2','authoritative':True,'governance_version':'V2.3.1','template_version':'2.3.1-template.1','delivery_version':'TEST','last_promotion_id':None,'updated_at':None})
+    subprocess.run([sys.executable,'-S',TS,'--template-root',tr,'--initialize','--delivery-version','TEST'],check=True,capture_output=True,text=True)
+    os.makedirs(os.path.join(pr,'docs','runtime')); os.makedirs(os.path.join(pr,'docs','learning'))
+    open(os.path.join(pr,'docs','runtime','TRUSTED_DISPATCH_IDENTITY.jsonl'),'w').write(json.dumps({'dispatch_id':'DB','worker_id':'WB','task_id':'TB','actual_role':'builder'})+'\n'+json.dumps({'dispatch_id':'DQ','worker_id':'WQ','task_id':'TQ','actual_role':'qa'})+'\n')
+    c=os.path.join(d,'skill.md'); open(c,'w').write('# safe\n')
+    risk={'required_tools':['read'],'write_scope':'DOCUMENT_ONLY','shell_scope':'NONE','network_scope':'NONE','computer_use':False,'destructive':False,'risk_level':'LOW'}
+    v={'what_test':'real-task','target':'skills/x.md','target_hash':h(c),'target_version':'1','result':'PASS','skill_risk':risk}
+    rr=subprocess.run([sys.executable,'-S',VR,'--repo-root',pr,'--dispatch-id','DQ'],input=json.dumps(v),text=True,capture_output=True); assert rr.returncode==0
+    req={'learning_event_id':'E','change_type':'SKILL','risk':'LOW','relative_path':'skills/x.md','content_file':c,'validation_receipt_id':json.loads(rr.stdout)['validation_receipt_id']}
+    rp=os.path.join(d,'r.json'); dump(rp,req)
+    ok=subprocess.run([sys.executable,'-S',PG,'--request',rp,'--project-root',pr,'--template-root',tr,'--dispatch-id','DB'],text=True,capture_output=True); assert ok.returncode==0,ok.stderr
+    risk['destructive']=True; risk['risk_level']='HIGH'
+    v['target']='skills/y.md'; v['skill_risk']=risk
+    rr=subprocess.run([sys.executable,'-S',VR,'--repo-root',pr,'--dispatch-id','DQ'],input=json.dumps(v),text=True,capture_output=True); assert rr.returncode==0
+    req['relative_path']='skills/y.md'; req['validation_receipt_id']=json.loads(rr.stdout)['validation_receipt_id']; dump(rp,req)
+    bad=subprocess.run([sys.executable,'-S',PG,'--request',rp,'--project-root',pr,'--template-root',tr,'--dispatch-id','DB'],text=True,capture_output=True); assert bad.returncode!=0
+print('PASS test-skill-promotion')

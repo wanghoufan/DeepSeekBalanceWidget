@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+"""
+MAC_RUNTIME_V1 trusted Dispatch Gateway.
+
+This is a real CLI adapter, but it remains UNVERIFIED until executed on the
+user's Mac with actual Orca/OpenCode/Codex and the Mac canary suite.
+"""
+import argparse,json,os,re,subprocess,sys
+sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
+from common import require_macos,which,run,extract,load_config,repo_root_from_here
+sys.path.insert(0,os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..','governance')))
+from internal_capability import issue as issue_internal
+
+ROLE_READONLY={'planner','code-reviewer','qa','product-reviewer','experience-recorder'}
+
+def opencode_major(opencode):
+    try:
+        out=run([opencode,'--version'],timeout=10)
+        m=re.search(r'(\d+)\.',out)
+        return int(m.group(1)) if m else 1
+    except Exception:
+        return 1
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--request',required=True)
+    a=ap.parse_args(); require_macos()
+    req=json.load(open(a.request,encoding='utf-8'))
+    project=os.path.abspath(req['project_root'])
+    role=req['role']; backend=req['backend']; model=req.get('model')
+    worktree=req.get('worktree','current')
+    cfg=load_config(project)
+    if backend not in {'opencode','codex'}: raise SystemExit('DENY: unsupported backend')
+    if role!='task-manager' and backend=='opencode' and str(model or '').startswith('opencode-go/'):
+        raise SystemExit('DENY: non-Task-Manager OpenCode Go requires separate one-shot override flow')
+
+    # Governance current/pinned state must be valid before a production dispatch.
+    guard=os.path.join(project,'scripts','governance','stale-template-guard')
+    template=req['template_root']
+    sg=subprocess.run([sys.executable,'-S',guard,'--project-root',project,'--template-root',template],capture_output=True,text=True,timeout=15)
+    if sg.returncode!=0: raise SystemExit('DENY: stale governance before dispatch: '+sg.stdout+sg.stderr)
+
+    # Skill resolution includes validated content hash + applied manifest hash checks.
+    resolver=os.path.join(project,'scripts','workers','resolve-skills')
+    rr=subprocess.run([sys.executable,'-S',resolver,'--project-root',project,
+                       '--role',role,'--task-type',req.get('task_type','GENERAL'),
+                       '--triggers',','.join(req.get('triggers') or []),
+                       '--capabilities',','.join(req.get('capabilities') or [])],
+                      capture_output=True,text=True,timeout=15)
+    if rr.returncode!=0: raise SystemExit('DENY: skill resolver blocked dispatch: '+rr.stdout+rr.stderr)
+    skill_result=json.loads(rr.stdout); selected=skill_result.get('selected_skills') or []
+    skill_text=[]
+    for s in selected:
+        fp=os.path.join(project,s['path'])
+        skill_text.append(f"\n## Loaded Skill: {s['skill_id']}\n"+open(fp,encoding='utf-8').read())
+
+    orca=which(cfg['executables']['orca'])
+    # Run namespace.
+    run_id=req.get('run_id')
+    if not run_id:
+        robj=run([orca,'orchestration','run-create','--objective',req.get('objective') or req.get('task_spec','Governed task'),'--json'],timeout=30,expect_json=True)
+        run_id=extract(robj,['runId','run_id','id'])
+    # Task spec includes exact skill material and usage reporting contract.
+    spec=req.get('task_spec','')
+    if skill_text:
+        spec += "\n\n# Governance-loaded skills\n"+'\n'.join(skill_text)
+    spec += "\n\n# Skill usage reporting\nAt worker_done, body MUST be compact JSON with key `used_skill_ids` listing only loaded skills that materially influenced execution. Loaded-but-unused skills must not be listed."
+    # `run-create` only establishes the coordinator namespace.  Bind this
+    # Task to that exact Run; otherwise a later dispatch correctly rejects a
+    # task that is outside the active coordinator context.
+    tobj=run([orca,'orchestration','task-create','--run',str(run_id),'--spec',spec,'--task-title',req.get('task_title','Governed task'),'--json'],timeout=30,expect_json=True)
+    task_id=extract(tobj,['taskId','task_id','id'])
+    if not task_id: raise SystemExit('DENY: Orca task-create did not return task id')
+
+    launcher_env=os.environ.copy()
+    secret=launcher_env.get('ORCA_GOVERNANCE_INTERNAL_SECRET')
+    if not secret or len(secret)<32:
+        raise SystemExit('DENY: trusted runtime internal secret unavailable')
+
+    if backend=='opencode':
+        oc=which(cfg['executables']['opencode'])
+        major=opencode_major(oc)
+        if role=='task-manager':
+            profile='task-manager-v2.json' if major>=2 else 'task-manager-v1.json'
+        elif role in ROLE_READONLY:
+            profile='readonly-v2.json' if major>=2 else 'readonly-v1.json'
+        else:
+            profile='builder-v2.json' if major>=2 else 'builder-v1.json'
+        profile=os.path.join(os.path.dirname(__file__),'opencode-profiles',profile)
+        token=issue_internal('MAC_LAUNCH_OPENCODE',{'task_id':task_id,'model':model,'role':role},ttl_seconds=30)
+        launcher=os.path.join(os.path.dirname(__file__),'launch-opencode')
+        l=subprocess.run([sys.executable,'-S',launcher,'--project-root',project,'--task-id',task_id,
+                          '--worktree',worktree,'--model',model,'--role',role,'--profile',profile,
+                          '--task-spec',spec,
+                          '--internal-token',token],capture_output=True,text=True,timeout=120,env=launcher_env)
+    else:
+        prof=cfg['codex']['profiles'].get(role)
+        if not prof: raise SystemExit('DENY: no safe Codex role profile')
+        token=issue_internal('MAC_LAUNCH_CODEX',{'task_id':task_id,'role':role,'sandbox':prof['sandbox'],'approval':prof['approval']},ttl_seconds=30)
+        launcher=os.path.join(os.path.dirname(__file__),'launch-codex')
+        argv=[sys.executable,'-S',launcher,'--project-root',project,'--task-id',task_id,
+              '--worktree',worktree,'--role',role,'--sandbox',prof['sandbox'],
+              '--approval',prof['approval'],'--cwd',project,'--internal-token',token]
+        if model: argv += ['--model',model]
+        l=subprocess.run(argv,capture_output=True,text=True,timeout=120,env=launcher_env)
+    if l.returncode!=0: raise SystemExit('DENY: launcher failed: '+l.stderr+l.stdout)
+    launch=json.loads(l.stdout)
+    dispatch_id=extract(launch.get('dispatch_receipt'),['dispatchId','dispatch_id','id'])
+    terminal_handle=launch.get('terminal_handle')
+    if not dispatch_id: raise SystemExit('DENY: no dispatch id in Orca dispatch receipt')
+
+    token=issue_internal('WRITE_TRUSTED_DISPATCH_IDENTITY',{'dispatch_id':dispatch_id,'task_id':task_id,'role':role},ttl_seconds=30)
+    writer=os.path.join(os.path.dirname(__file__),'trusted-dispatch-identity-writer')
+    w=subprocess.run([sys.executable,'-S',writer,'--project-root',project,'--dispatch-id',dispatch_id,
+                      '--task-id',task_id,'--worker-id',str(terminal_handle or ''),'--role',role,
+                      '--loaded-skill-ids',json.dumps([s['skill_id'] for s in selected]),
+                      '--internal-token',token],capture_output=True,text=True,timeout=15,env=launcher_env)
+    if w.returncode!=0: raise SystemExit('DENY: trusted identity writer failed: '+w.stderr)
+
+    print(json.dumps({
+      'mac_dispatch':'PASS','run_id':run_id,'task_id':task_id,'dispatch_id':dispatch_id,
+      'backend':backend,'role':role,'model':model,
+      'loaded_skill_ids':[s['skill_id'] for s in selected],
+      'terminal_handle':terminal_handle
+    },ensure_ascii=False))
+if __name__=='__main__': main()

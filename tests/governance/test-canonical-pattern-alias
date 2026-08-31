@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+import json, os, shutil, subprocess, sys, tempfile
+
+BASE=os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..'))
+W=os.path.join(BASE,'scripts','governance','write-learning-event')
+
+def seed(root):
+    os.makedirs(os.path.join(root,'docs','learning'),exist_ok=True)
+    shutil.copy2(os.path.join(BASE,'docs','learning','LEARNING_PATTERN_REGISTRY.yaml'),
+                 os.path.join(root,'docs','learning','LEARNING_PATTERN_REGISTRY.yaml'))
+
+with tempfile.TemporaryDirectory() as d:
+    seed(d)
+    aliases=['TM_CONTINUE_UNTIL_P0','TM_DO_NOT_STOP','TASK_MANAGER_CONTINUATION']
+    outs=[]
+    for alias in aliases:
+        e={
+          'project_id':'P','stage_id':'S','trigger':'USER_CORRECTION',
+          'symptom':'Task Manager stops before the current P0/task is actually done',
+          'root_cause':'continuation discipline','current_fix':'continue',
+          'impact':'HIGH','candidate_type':'GUARD_RULE','reusable':True,
+          'learning_pattern_id':alias
+        }
+        r=subprocess.run([sys.executable,'-S',W,'--repo-root',d],input=json.dumps(e),text=True,capture_output=True)
+        assert r.returncode==0,r.stderr
+        outs.append(json.loads(r.stdout))
+    assert [x['canonical_pattern_id'] for x in outs]==['TM_CONTINUATION']*3
+    assert [x['recurrence_count'] for x in outs]==[1,2,3]
+print('PASS test-canonical-pattern-alias')

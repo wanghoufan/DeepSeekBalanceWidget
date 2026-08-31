@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+"""
+record-user-approval｜V2.3.1 FAIL-CLOSED TEMPLATE
+
+Must be bound to a trusted user interaction boundary. Task Manager cannot self-report trusted_user_origin.
+
+This adapter records a one-shot approval only after an explicit macOS dialog
+confirmation. It does not perform promotion itself; Promotion Gateway remains
+the only writer for template versions and manifests.
+"""
+import argparse, json, os, subprocess, sys, uuid
+from datetime import datetime, timedelta, timezone
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lock_utils import FileLock
+
+def applescript_string(value):
+    """Quote UTF-8 text for an AppleScript string literal.
+
+    json.dumps emits ``\\uXXXX`` escapes that AppleScript does not decode;
+    preserve the user's Chinese summary as literal UTF-8 instead.
+    """
+    value = str(value).replace('\\', '\\\\').replace('"', '\\"')
+    value = value.replace('\\r', ' ').replace('\\n', ' ')
+    return '"' + value + '"'
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--repo-root', required=True)
+    ap.add_argument('--scope', required=True)
+    ap.add_argument('--project-id', required=True)
+    ap.add_argument('--template-version', required=True)
+    ap.add_argument('--manifest-hash', required=True)
+    ap.add_argument('--summary', required=True)
+    ap.add_argument('--approval-id')
+    ap.add_argument('--bootstrap-binding-json')
+    a=ap.parse_args()
+    if sys.platform != 'darwin': raise SystemExit('DENY: trusted approval adapter requires macOS')
+    script='display dialog '+applescript_string(a.summary)+' with title "AI Governance Promotion" buttons {"取消", "批准"} default button "取消" with icon caution'
+    r=subprocess.run(['osascript','-e',script],capture_output=True,text=True,timeout=120)
+    if r.returncode != 0 or '批准' not in r.stdout:
+        raise SystemExit('DENY: user approval was not confirmed in the macOS dialog')
+    root=os.path.abspath(a.repo_root); now=datetime.now(timezone.utc)
+    binding=json.loads(a.bootstrap_binding_json) if a.bootstrap_binding_json else None
+    if binding:
+        required=['bootstrap_id','bootstrap_type','template_version_before','manifest_hash_before',
+                  'fingerprint_before','exact_file_set','pre_change_file_hashes',
+                  'post_change_file_hashes','bootstrap_bundle_hash','ephemeral_executor_sha256',
+                  'validation_receipt_id','one_shot']
+        missing=[k for k in required if k not in binding]
+        if missing: raise SystemExit('DENY: bootstrap approval binding missing '+','.join(missing))
+        if binding.get('one_shot') is not True: raise SystemExit('DENY: bootstrap approval must be one-shot')
+    rec={'record_type':'BOOTSTRAP_APPROVAL_ISSUED' if binding else 'ISSUED',
+         'approval_id':a.approval_id or 'USER-APPROVAL-'+uuid.uuid4().hex[:12],
+         'trusted_user_origin':True,'interaction_boundary':'macos_osascript_dialog','scope':a.scope,
+         'project_id':a.project_id,'approved_template_version':a.template_version,
+         'approved_manifest_hash':a.manifest_hash,'summary':a.summary,'one_shot':True,
+         'issued_at':now.isoformat(),'expires_at':(now+timedelta(minutes=10)).isoformat()}
+    if binding:
+        rec['bootstrap_binding']=binding
+        rec['bootstrap_id']=binding['bootstrap_id']
+        rec['bootstrap_type']=binding['bootstrap_type']
+    p=os.path.join(root,'docs','runtime','TRUSTED_USER_APPROVAL_RECEIPTS.jsonl')
+    with FileLock(p+'.lock','record-user-approval',timeout=5,stale_after=15):
+        with open(p,'a',encoding='utf-8') as f: f.write(json.dumps(rec,ensure_ascii=False)+'\n'); f.flush(); os.fsync(f.fileno())
+    print(json.dumps(rec,ensure_ascii=False))
+if __name__=='__main__': main()

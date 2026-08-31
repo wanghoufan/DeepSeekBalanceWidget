@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+import argparse,json,os,sys,time
+sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
+from common import require_macos,which,run,q,sanitized_worker_command,extract,load_config
+sys.path.insert(0,os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..','governance')))
+from internal_capability import verify_and_consume
+
+def resolve_live_handle(orca,worktree,title):
+    """Resolve the post-startup terminal handle without trusting create's PTY."""
+    for _ in range(10):
+        listing=run([orca,'terminal','list','--worktree',worktree,'--json'],timeout=30,expect_json=True)
+        terminals=((listing.get('result') or {}).get('terminals') or [])
+        current=next((t.get('handle') for t in terminals if t.get('title')==title and t.get('handle')),None)
+        if current: return current
+        # OpenCode replaces the original title after its interactive TUI loads.
+        replacements=[t.get('handle') for t in terminals if t.get('title')=='OpenCode' and t.get('handle')]
+        if len(replacements)==1: return replacements[0]
+        time.sleep(1)
+    raise SystemExit('DENY: unable to re-resolve Orca terminal handle after bounded startup')
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--project-root',required=True); ap.add_argument('--task-id',required=True)
+    ap.add_argument('--worktree',default='current'); ap.add_argument('--model',required=True)
+    ap.add_argument('--role',required=True); ap.add_argument('--profile',required=True)
+    ap.add_argument('--task-spec',required=True)
+    ap.add_argument('--internal-token',required=True)
+    a=ap.parse_args(); require_macos()
+    try:
+        verify_and_consume(a.project_root,a.internal_token,'MAC_LAUNCH_OPENCODE',{'task_id':a.task_id,'model':a.model,'role':a.role})
+    except Exception as e: raise SystemExit('DENY: launcher capability invalid: '+str(e))
+    oc=which('opencode'); orca=which('orca')
+    profile=os.path.abspath(a.profile)
+    if not os.path.isfile(profile): raise SystemExit('DENY: OpenCode permission profile missing')
+    # Dispatch injection needs a live interactive TUI.  `opencode run` is a
+    # one-shot command and rejects an empty message before Orca can inject.
+    cmd=sanitized_worker_command([oc,'--auto','-m',a.model],{'OPENCODE_CONFIG':profile,'OPENCODE_DISABLE_AUTOUPDATE':'true'})
+    # OpenCode's first interactive startup can exceed the fast RPC default on
+    # a healthy Mac.  Orca can replace the freshly-created PTY during that
+    # startup, so never wait on the creation receipt's handle.
+    term=run([orca,'terminal','create','--worktree',a.worktree,'--title',f'{a.role}:{a.task_id}','--command',cmd,'--json'],timeout=90,expect_json=True)
+    handle=extract(term,['terminalHandle','handle','id'])
+    if not handle: raise SystemExit('DENY: unable to resolve Orca terminal handle')
+    title=f'{a.role}:{a.task_id}'
+    handle=resolve_live_handle(orca,a.worktree,title)
+    # Re-list immediately before delivery: this is the one authoritative
+    # runtime address if OpenCode changed its PTY while becoming interactive.
+    handle=resolve_live_handle(orca,a.worktree,title)
+    # OpenCode is not an Orca-recognized injectable agent CLI in the installed
+    # runtime.  Keep Dispatch provenance, then use Orca's documented manual
+    # terminal-delivery path for a live OpenCode TUI instead of claiming an
+    # unsupported injected lifecycle preamble.
+    disp=run([orca,'orchestration','dispatch','--task',a.task_id,'--to',str(handle),'--json'],timeout=30,expect_json=True)
+    delivery=run([orca,'terminal','send','--terminal',str(handle),'--text',a.task_spec,'--enter','--json'],timeout=30,expect_json=True)
+    print(json.dumps({'backend':'opencode','task_id':a.task_id,'terminal_handle':handle,
+                      'delivery_mode':'tracked_dispatch_plus_terminal_send',
+                      'dispatch_receipt':disp,'delivery_receipt':delivery},ensure_ascii=False))
+if __name__=='__main__': main()

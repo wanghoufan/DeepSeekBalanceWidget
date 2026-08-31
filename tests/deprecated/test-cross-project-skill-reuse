@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+import json, os, subprocess, sys, tempfile
+B=os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..')); TS=os.path.join(B,'scripts','governance','template-sync'); BS=os.path.join(B,'scripts','governance','bootstrap-project'); RS=os.path.join(B,'scripts','workers','resolve-skills')
+def dump(p,o): os.makedirs(os.path.dirname(p),exist_ok=True); json.dump(o,open(p,'w'))
+with tempfile.TemporaryDirectory() as d:
+    tr=os.path.join(d,'t'); pr=os.path.join(d,'next'); os.makedirs(os.path.join(tr,'docs','governance')); os.makedirs(os.path.join(tr,'docs','learning')); os.makedirs(os.path.join(tr,'template-meta')); os.makedirs(os.path.join(tr,'skills','shot'))
+    open(os.path.join(tr,'AGENTS.md'),'w').write('# A\n'); open(os.path.join(tr,'skills','shot','SKILL.md'),'w').write('# Shot\n')
+    dump(os.path.join(tr,'docs','learning','SKILL_REGISTRY.yaml'),{'skills':[{'skill_id':'UI_SCREENSHOT_FEEDBACK','status':'PRODUCTION','lifecycle_status':'INCLUDED_IN_TEMPLATE','path':'skills/shot/SKILL.md','trigger':['screenshot_feedback'],'task_types':['QA'],'applicable_roles':['qa'],'required_capabilities':['vision'],'required_tools':['read'],'write_scope':'NONE','shell_scope':'NONE','network_scope':'NONE','computer_use':False,'destructive':False,'risk_level':'LOW','template_version':'x','last_validated':'now'}]})
+    dump(os.path.join(tr,'docs','governance','TEMPLATE_VERSION.yaml'),{'schema_version':'2','authoritative':True,'governance_version':'V2.3.1','template_version':'2.3.1-template.20','delivery_version':'TEST','last_promotion_id':None,'updated_at':None})
+    subprocess.run([sys.executable,'-S',TS,'--template-root',tr,'--initialize','--delivery-version','TEST'],check=True,capture_output=True,text=True)
+    subprocess.run([sys.executable,'-S',BS,'--template-root',tr,'--project-root',pr,'--project-id','P2','--repo-id','R2'],check=True,capture_output=True,text=True)
+    r=subprocess.run([sys.executable,'-S',RS,'--project-root',pr,'--role','qa','--task-type','QA','--triggers','screenshot_feedback','--capabilities','vision,read'],text=True,capture_output=True); assert r.returncode==0,r.stderr
+    o=json.loads(r.stdout); assert o['activation_count']==1 and o['selected_skills'][0]['skill_id']=='UI_SCREENSHOT_FEEDBACK'
+print('PASS test-cross-project-skill-reuse')

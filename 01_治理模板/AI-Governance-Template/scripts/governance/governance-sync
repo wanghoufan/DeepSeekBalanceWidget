@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+"""
+Synchronize a stale project to the current approved Governance Template without
+touching project business state or immutable Origin. Runs governance contract
+tests before updating PROJECT_GOVERNANCE_APPLIED.
+"""
+import argparse, hashlib, json, os, shutil, subprocess, sys
+from datetime import datetime, timezone
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lock_utils import FileLock
+
+SYNC_PREFIXES=(
+  'AGENTS.md',
+  'docs/governance/',
+  'docs/roles/',
+  'docs/workflow/',
+  'docs/model/',
+  'docs/learning/',
+  'scripts/governance/',
+  'scripts/workers/',
+  'scripts/runtime/',
+  'tests/governance/',
+  'skills/'
+)
+STATEFUL_EXACT={
+  'docs/governance/PROJECT_GOVERNANCE_ORIGIN.yaml',
+  'docs/governance/PROJECT_GOVERNANCE_APPLIED.yaml',
+  'docs/governance/PROJECT_GOVERNANCE_APPLIED_MANIFEST.json',
+  'docs/governance/PROJECT_GOVERNANCE_ORIGIN.template.yaml',
+  'docs/governance/PROJECT_GOVERNANCE_APPLIED.template.yaml',
+  'docs/governance/TEMPLATE_MANIFEST.json',
+  'docs/governance/TEMPLATE_VERSION.yaml',
+  'docs/learning/LEARNING_EVENTS.jsonl',
+  'docs/learning/PROMOTION_QUEUE.yaml',
+  'docs/learning/PROMOTION_LOG.jsonl',
+  'docs/learning/VALIDATION_RECEIPTS.jsonl',
+  'docs/learning/SKILL_USAGE.jsonl',
+  'docs/learning/SKILL_EFFECTIVENESS.jsonl',
+}
+# These are registries/policies and intentionally synced from the approved template.
+SYNC_LEARNING_EXACT={
+  'docs/learning/SKILL_REGISTRY.yaml',
+  'docs/learning/LEARNING_PATTERN_REGISTRY.yaml',
+  'docs/learning/LEARNING_POLICY.md',
+  'docs/learning/PROJECT_CLOSE_LEARNING_GATE.md',
+  'docs/learning/SKILL_RUNTIME_POLICY.md',
+}
+
+def h(p):
+    x=hashlib.sha256()
+    with open(p,'rb') as f:
+        for c in iter(lambda:f.read(65536),b''): x.update(c)
+    return x.hexdigest()
+
+def syncable(rel):
+    if rel in STATEFUL_EXACT: return False
+    if rel.startswith('docs/learning/') and rel not in SYNC_LEARNING_EXACT:
+        return False
+    return rel=='AGENTS.md' or any(rel.startswith(x) for x in SYNC_PREFIXES if x.endswith('/'))
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--project-root',required=True)
+    ap.add_argument('--template-root',required=True)
+    a=ap.parse_args()
+    pr=os.path.abspath(a.project_root); tr=os.path.abspath(a.template_root)
+    gd=os.path.join(pr,'docs','governance')
+    apath=os.path.join(gd,'PROJECT_GOVERNANCE_APPLIED.yaml')
+    opath=os.path.join(gd,'PROJECT_GOVERNANCE_ORIGIN.yaml')
+    mp=os.path.join(tr,'docs','governance','TEMPLATE_MANIFEST.json')
+    vp=os.path.join(tr,'docs','governance','TEMPLATE_VERSION.yaml')
+    if not all(os.path.exists(p) for p in (apath,opath,mp,vp)):
+        raise SystemExit('SYNC DENY: missing governance state/template files')
+
+    applied=json.load(open(apath,encoding='utf-8'))
+    if (applied.get('pin') or {}).get('status')=='VALIDATED':
+        raise SystemExit('SYNC DENY: project is explicitly pinned; unpin requires separate Trusted User Approval')
+
+    lock=os.path.join(tr,'docs','governance','.template-promotion.lock')
+    with FileLock(lock,'governance-sync',timeout=20,stale_after=60):
+        manifest=json.load(open(mp,encoding='utf-8'))
+        version=json.load(open(vp,encoding='utf-8'))
+        copied=[]
+        for e in manifest.get('files',[]):
+            rel=e['path']
+            if not syncable(rel): continue
+            src=os.path.join(tr,rel)
+            if not os.path.isfile(src): raise SystemExit('SYNC DENY: template file missing '+rel)
+            if h(src)!=e['sha256']: raise SystemExit('SYNC DENY: template manifest mismatch '+rel)
+            dst=os.path.join(pr,rel)
+            os.makedirs(os.path.dirname(dst),exist_ok=True)
+            shutil.copy2(src,dst); copied.append(rel)
+
+        # Governance contract tests must pass before Applied state advances.
+        runner=os.path.join(pr,'tests','governance','run-all')
+        if not os.path.isfile(runner):
+            raise SystemExit('SYNC DENY: governance run-all missing after sync')
+        r=subprocess.run([sys.executable,'-S',runner],capture_output=True,text=True,timeout=300)
+        if r.returncode!=0:
+            print(r.stdout,file=sys.stderr); print(r.stderr,file=sys.stderr)
+            raise SystemExit('SYNC DENY: governance contract tests failed')
+
+        mh=h(mp)
+        applied['current_applied_template_version']=version['template_version']
+        applied['current_applied_manifest_hash']=mh
+        applied['current_applied_fingerprint']=manifest['template_fingerprint']
+        applied['last_promotion_id']=version.get('last_promotion_id')
+        applied['updated_at']=datetime.now(timezone.utc).isoformat()
+        applied['pin']=None
+        with open(apath,'w',encoding='utf-8') as f:
+            json.dump(applied,f,ensure_ascii=False,indent=2); f.write('\n')
+        shutil.copy2(mp,os.path.join(gd,'PROJECT_GOVERNANCE_APPLIED_MANIFEST.json'))
+
+    print(json.dumps({
+      'governance_sync':'PASS',
+      'applied_template_version':version['template_version'],
+      'copied_files':len(copied),
+      'contract_tests_exit_code':0
+    },ensure_ascii=False))
+
+if __name__=='__main__': main()

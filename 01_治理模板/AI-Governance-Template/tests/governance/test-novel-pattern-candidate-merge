@@ -1,0 +1,24 @@
+#!/usr/bin/env python3
+import json,os,shutil,subprocess,sys,tempfile
+BASE=os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..'))
+W=os.path.join(BASE,'scripts','governance','write-learning-event')
+with tempfile.TemporaryDirectory() as d:
+    os.makedirs(os.path.join(d,'docs','learning'),exist_ok=True)
+    shutil.copy2(os.path.join(BASE,'docs','learning','LEARNING_PATTERN_REGISTRY.yaml'),
+                 os.path.join(d,'docs','learning','LEARNING_PATTERN_REGISTRY.yaml'))
+    events=[
+      {'learning_pattern_id':'CACHE_RESUME_ONE','symptom':'resume context cache misses after pause','root_cause':'handoff cache resume tokens repeated'},
+      {'learning_pattern_id':'CONTEXT_RESTORE_ALIAS','symptom':'context resume after pause causes cache miss','root_cause':'repeated handoff cache resume tokens'}
+    ]
+    outs=[]
+    for x in events:
+        e={'project_id':'P','stage_id':'S','trigger':'USER_CORRECTION','impact':'MEDIUM',
+           'candidate_type':'TEMPLATE','reusable':True,'current_fix':'manual resume',**x}
+        r=subprocess.run([sys.executable,'-S',W,'--repo-root',d],input=json.dumps(e),text=True,capture_output=True)
+        assert r.returncode==0,r.stderr
+        outs.append(json.loads(r.stdout))
+    assert outs[0]['canonical_pattern_id']==outs[1]['canonical_pattern_id']
+    assert outs[0]['pattern_match_type']=='NEW_PATTERN_CANDIDATE'
+    assert outs[1]['pattern_match_type']=='CANDIDATE_DEDUP'
+    assert [x['recurrence_count'] for x in outs]==[1,2]
+print('PASS test-novel-pattern-candidate-merge')

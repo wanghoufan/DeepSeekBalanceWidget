@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+import argparse, hashlib, json, os, sys
+from datetime import datetime, timezone
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lock_utils import FileLock
+
+ALLOWED={
+ 'BOOTSTRAP_REQUESTED','BOOTSTRAP_PREFLIGHT_VERIFIED','BOOTSTRAP_APPROVAL_ISSUED',
+ 'BOOTSTRAP_PATCH_APPLIED','BOOTSTRAP_CONTRACT_TESTS_PASS','BOOTSTRAP_GOVERNANCE_TESTS_PASS',
+ 'BOOTSTRAP_NEGATIVE_CANARY_PASS','BOOTSTRAP_TEMPLATE_SYNCED','BOOTSTRAP_COMPLETED',
+ 'BOOTSTRAP_CONSUMED','BOOTSTRAP_FAILED','BOOTSTRAP_ROLLED_BACK','BOOTSTRAP_POST_SYNC_FAILURE'
+}
+
+def canonical(obj):
+    return json.dumps(obj,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--repo-root',required=True)
+    ap.add_argument('--record-json',required=True)
+    a=ap.parse_args(); root=os.path.abspath(a.repo_root)
+    rec=json.loads(a.record_json)
+    if rec.get('record_type') not in ALLOWED: raise SystemExit('DENY: invalid bootstrap evidence record type')
+    if not rec.get('bootstrap_id'): raise SystemExit('DENY: bootstrap_id required')
+    p=os.path.join(root,'docs','governance','BOOTSTRAP_HISTORY.jsonl')
+    os.makedirs(os.path.dirname(p),exist_ok=True)
+    with FileLock(p+'.lock','bootstrap-evidence-writer',timeout=5,stale_after=15):
+        previous=None
+        if os.path.exists(p):
+            lines=[x for x in open(p,encoding='utf-8') if x.strip()]
+            if lines:
+                last=json.loads(lines[-1])
+                previous=last.get('record_hash')
+        out={**rec,'issued_at':rec.get('issued_at') or datetime.now(timezone.utc).isoformat(),
+             'previous_record_hash':previous}
+        out['record_hash']=hashlib.sha256(canonical(out)).hexdigest()
+        with open(p,'a',encoding='utf-8') as f:
+            f.write(json.dumps(out,ensure_ascii=False,separators=(',',':'))+'\n')
+            f.flush(); os.fsync(f.fileno())
+    print(json.dumps(out,ensure_ascii=False))
+
+if __name__=='__main__': main()

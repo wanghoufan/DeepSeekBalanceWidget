@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+import hashlib, json, os, shutil, subprocess, sys, tempfile
+from _testlib import trusted_template_sync
+
+BASE=os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..'))
+SECRET='e2e-governance-internal-secret-abcdefghijklmnopqrstuvwxyz-123456'
+
+def run(cmd, env=None, **kw):
+    r=subprocess.run(cmd,text=True,capture_output=True,timeout=45,env=env,**kw)
+    if r.returncode!=0:
+        raise AssertionError("FAILED\nCMD="+repr(cmd)+"\nOUT="+r.stdout+"\nERR="+r.stderr)
+    return r
+
+def h(p): return hashlib.sha256(open(p,'rb').read()).hexdigest()
+def append_jsonl(p,obj):
+    os.makedirs(os.path.dirname(p),exist_ok=True)
+    with open(p,'a',encoding='utf-8') as f:
+        f.write(json.dumps(obj,ensure_ascii=False)+'\n')
+
+with tempfile.TemporaryDirectory() as d:
+    tr=os.path.join(d,'governance-template')
+    pa=os.path.join(d,'project-a')
+    pb=os.path.join(d,'project-b')
+    env=dict(os.environ); env['ORCA_GOVERNANCE_INTERNAL_SECRET']=SECRET
+
+    # Start with no pre-created target Production Skill.
+    shutil.copytree(BASE,tr,ignore=shutil.ignore_patterns('__pycache__','*.pyc','*.lock'))
+    regp=os.path.join(tr,'docs','learning','SKILL_REGISTRY.yaml')
+    reg=json.load(open(regp,encoding='utf-8')); reg['skills']=[]
+    json.dump(reg,open(regp,'w'),ensure_ascii=False,indent=2)
+    for rel in [
+      'docs/learning/LEARNING_EVENTS.jsonl','docs/learning/PROMOTION_LOG.jsonl',
+      'docs/learning/SKILL_USAGE.jsonl','docs/learning/SKILL_EFFECTIVENESS.jsonl'
+    ]:
+        open(os.path.join(tr,rel),'w').close()
+    json.dump({'schema_version':'x','authoritative':True,'items':[]},
+              open(os.path.join(tr,'docs','learning','PROMOTION_QUEUE.yaml'),'w'))
+
+    BS=os.path.join(tr,'scripts','governance','bootstrap-project')
+    trusted_template_sync(tr,initialize=True,delivery_version='TEST')
+    initial_version=json.load(open(os.path.join(tr,'docs','governance','TEMPLATE_VERSION.yaml')))['template_version']
+
+    # ---- Project A ----
+    run([sys.executable,'-S',BS,'--template-root',tr,'--project-root',pa,'--project-id','PROJECT-A','--repo-id','REPO-A'])
+    origin_path=os.path.join(pa,'docs','governance','PROJECT_GOVERNANCE_ORIGIN.yaml')
+    origin_before=open(origin_path,'rb').read()
+
+    W=os.path.join(pa,'scripts','governance','write-learning-event')
+    R=os.path.join(pa,'scripts','governance','learning-router')
+    aliases=['SCREENSHOT_FEEDBACK_FLOW','UI_FEEDBACK_SCREENSHOT','SCREENSHOT_PRODUCT_FEEDBACK']
+    events=[]; routes=[]
+    for alias in aliases:
+        e={
+          'project_id':'PROJECT-A','stage_id':'STAGE-1','trigger':'USER_CORRECTION',
+          'symptom':'Screenshot feedback requires the same repeatable triage workflow',
+          'root_cause':'manual repeated SOP','current_fix':'manual triage',
+          'impact':'MEDIUM','candidate_type':'SKILL','reusable':True,
+          'stable_multi_step_sop':True,'learning_pattern_id':alias
+        }
+        ev=json.loads(run([sys.executable,'-S',W,'--repo-root',pa],input=json.dumps(e)).stdout)
+        events.append(ev)
+        routes.append(json.loads(run([sys.executable,'-S',R,'--repo-root',pa,'--event-id',ev['event_id'],'--persist']).stdout))
+
+    assert [e['canonical_pattern_id'] for e in events]==['UI_SCREENSHOT_FEEDBACK']*3
+    assert [e['recurrence_count'] for e in events]==[1,2,3]
+    assert routes[0]['routing_class']=='PROJECT_PATCH'
+    assert routes[1]['routing_class']=='TEMPLATE'
+    assert routes[2]['routing_class']=='SKILL'
+
+    ident=os.path.join(pa,'docs','runtime','TRUSTED_DISPATCH_IDENTITY.jsonl')
+    append_jsonl(ident,{'dispatch_id':'D-QA-A','worker_id':'W-QA-A','task_id':'TASK-SKILL','actual_role':'qa'})
+    append_jsonl(ident,{'dispatch_id':'D-BUILD-A','worker_id':'W-BUILD-A','task_id':'TASK-SKILL','actual_role':'builder'})
+
+    skill=os.path.join(d,'SKILL.md')
+    open(skill,'w').write('# UI Screenshot Feedback Skill\n\nRepeatable screenshot triage SOP.\n')
+    rel='skills/ui-screenshot-feedback/SKILL.md'
+
+    vr={
+      'what_test':'PROJECT_A_REAL_TASK_VALIDATION','target':rel,'target_hash':h(skill),
+      'target_version':'1','result':'PASS',
+      'skill_risk':{
+        'required_tools':['read','screenshot'],'write_scope':'NONE','shell_scope':'NONE',
+        'network_scope':'NONE','computer_use':False,'destructive':False,'risk_level':'LOW'
+      }
+    }
+    VR=os.path.join(pa,'scripts','governance','write-validation-receipt')
+    validation=json.loads(run(
+      [sys.executable,'-S',VR,'--repo-root',pa,'--dispatch-id','D-QA-A','--scope','SKILL_PROMOTION'],
+      input=json.dumps(vr)
+    ).stdout)
+    validation_id=validation['validation_receipt_id']
+
+    REQ=os.path.join(pa,'scripts','governance','request-promotion')
+    reqq={
+      'learning_event_id':events[2]['event_id'],'change_type':'SKILL','risk':'LOW',
+      'relative_path':rel,'reason':'third canonical recurrence; stable reusable SOP'
+    }
+    run([sys.executable,'-S',REQ,'--repo-root',pa,'--request-json',json.dumps(reqq)])
+
+    promotion={
+      'learning_event_id':events[2]['event_id'],'change_type':'SKILL','risk':'LOW',
+      'relative_path':rel,'content_file':skill,'validation_receipt_id':validation_id,
+      'skill_registration':{
+        'skill_id':'UI_SCREENSHOT_FEEDBACK','trigger':['screenshot_feedback'],
+        'task_types':['QA','PRODUCT_REVIEW'],'applicable_roles':['qa','product-reviewer'],
+        'required_capabilities':['vision'],'required_tools':['read','screenshot'],
+        'write_scope':'NONE','shell_scope':'NONE','network_scope':'NONE',
+        'computer_use':False,'destructive':False,'risk_level':'LOW'
+      }
+    }
+    rp=os.path.join(d,'promotion.json'); json.dump(promotion,open(rp,'w'))
+    PG=os.path.join(pa,'scripts','governance','promotion-gateway')
+    receipt=json.loads(run(
+      [sys.executable,'-S',PG,'--request',rp,'--project-root',pa,'--template-root',tr,'--dispatch-id','D-BUILD-A'],
+      env=env
+    ).stdout)
+    assert receipt['status']=='PROMOTED' and receipt['skill_id']=='UI_SCREENSHOT_FEEDBACK'
+
+    for rr in (pa,tr):
+        sr=json.load(open(os.path.join(rr,'docs','learning','SKILL_REGISTRY.yaml')))
+        s=next(x for x in sr['skills'] if x['skill_id']=='UI_SCREENSHOT_FEEDBACK')
+        assert s['status']=='PRODUCTION'
+        assert s['validated_receipt_id']==validation_id
+        assert s['validated_content_hash']==h(skill)
+        assert s['source_project_id']=='PROJECT-A'
+        assert os.path.exists(os.path.join(rr,rel))
+
+    final_version=json.load(open(os.path.join(tr,'docs','governance','TEMPLATE_VERSION.yaml')))['template_version']
+    assert final_version!=initial_version
+    assert open(origin_path,'rb').read()==origin_before
+    applied=json.load(open(os.path.join(pa,'docs','governance','PROJECT_GOVERNANCE_APPLIED.yaml')))
+    assert applied['current_applied_template_version']==final_version
+
+    SG=os.path.join(pa,'scripts','governance','stale-template-guard')
+    run([sys.executable,'-S',SG,'--project-root',pa,'--template-root',tr])
+
+    LG=os.path.join(pa,'scripts','governance','learning-gate')
+    gate=json.loads(run([sys.executable,'-S',LG,'--repo-root',pa,'--template-root',tr]).stdout)
+    assert gate['learning_gate']=='PASS'
+
+    # ---- Project B inherits the promoted Production Skill ----
+    run([sys.executable,'-S',os.path.join(tr,'scripts','governance','bootstrap-project'),
+         '--template-root',tr,'--project-root',pb,'--project-id','PROJECT-B','--repo-id','REPO-B'])
+
+    RS=os.path.join(pb,'scripts','workers','resolve-skills')
+    selected=json.loads(run(
+      [sys.executable,'-S',RS,'--project-root',pb,'--role','qa','--task-type','QA',
+       '--triggers','screenshot_feedback','--capabilities','vision,read']
+    ).stdout)
+    assert selected['activation_count']==1
+    assert selected['blocked_count']==0
+    assert selected['selected_skills'][0]['skill_id']=='UI_SCREENSHOT_FEEDBACK'
+
+    # Trusted runtime proves both injection and actual use.
+    identb=os.path.join(pb,'docs','runtime','TRUSTED_DISPATCH_IDENTITY.jsonl')
+    append_jsonl(identb,{
+      'dispatch_id':'D-WORK-B','worker_id':'W-WORK-B','task_id':'TASK-B-1','actual_role':'qa',
+      'loaded_skill_ids':['UI_SCREENSHOT_FEEDBACK'],
+      'used_skill_ids':['UI_SCREENSHOT_FEEDBACK']
+    })
+    append_jsonl(identb,{
+      'dispatch_id':'D-VERIFY-B','worker_id':'W-VERIFY-B','task_id':'TASK-B-1','actual_role':'product-reviewer',
+      'loaded_skill_ids':[],'used_skill_ids':[]
+    })
+
+    US=os.path.join(pb,'scripts','governance','record-skill-usage')
+    usage=json.loads(run(
+      [sys.executable,'-S',US,'--project-root',pb,'--dispatch-id','D-WORK-B',
+       '--skill-id','UI_SCREENSHOT_FEEDBACK','--state','USED','--result','PASS']
+    ).stdout)
+    assert usage['project_id']=='PROJECT-B'
+    assert usage['source_project_id']=='PROJECT-A'
+    usage_id=usage['usage_id']
+
+    # Same dispatch can only make a provisional observation.
+    EF=os.path.join(pb,'scripts','governance','record-skill-effectiveness')
+    provisional={
+      'expected_outcome':'repeatable screenshot triage',
+      'actual_outcome':'triage completed',
+      'helped':True,'failure':False,'manual_intervention':False,'rework_count':0,
+      'effectiveness_result':'PROVISIONAL_EFFECTIVE'
+    }
+    p=json.loads(run(
+      [sys.executable,'-S',EF,'--project-root',pb,'--dispatch-id','D-WORK-B','--usage-id',usage_id],
+      input=json.dumps(provisional)
+    ).stdout)
+    assert p['verification_level']=='SELF_PROVISIONAL'
+
+    confirmed={**provisional,'effectiveness_result':'CONFIRMED_EFFECTIVE'}
+    c=json.loads(run(
+      [sys.executable,'-S',EF,'--project-root',pb,'--dispatch-id','D-VERIFY-B','--usage-id',usage_id],
+      input=json.dumps(confirmed)
+    ).stdout)
+    assert c['verification_level']=='INDEPENDENT_CONFIRMED'
+
+    regb=json.load(open(os.path.join(pb,'docs','learning','SKILL_REGISTRY.yaml')))
+    sb=next(x for x in regb['skills'] if x['skill_id']=='UI_SCREENSHOT_FEEDBACK')
+    assert sb['lifecycle_status']=='EFFECTIVENESS_RECORDED'
+    assert sb['first_reused_project_id']=='PROJECT-B'
+    assert len(open(os.path.join(pb,'docs','learning','SKILL_USAGE.jsonl')).read().splitlines())>=1
+    assert len(open(os.path.join(pb,'docs','learning','SKILL_EFFECTIVENESS.jsonl')).read().splitlines())>=2
+
+print('PASS test-full-cross-project-learning-loop')

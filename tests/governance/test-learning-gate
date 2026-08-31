@@ -1,0 +1,26 @@
+#!/usr/bin/env python3
+import hashlib, json, os, subprocess, sys, tempfile
+S=os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..','scripts','governance','learning-gate'))
+def h(p): return hashlib.sha256(open(p,'rb').read()).hexdigest()
+def dump(p,o): os.makedirs(os.path.dirname(p),exist_ok=True); json.dump(o,open(p,'w'))
+with tempfile.TemporaryDirectory() as d:
+    pr=os.path.join(d,'p'); tr=os.path.join(d,'t'); os.makedirs(os.path.join(pr,'docs','learning')); os.makedirs(os.path.join(tr,'docs','governance'))
+    open(os.path.join(pr,'docs','learning','LEARNING_EVENTS.jsonl'),'w').write(json.dumps({'event_id':'E1','reusable':True})+'\n')
+    dump(os.path.join(pr,'docs','learning','PROMOTION_QUEUE.yaml'),{'items':[]}); open(os.path.join(pr,'docs','learning','PROMOTION_LOG.jsonl'),'w').close(); dump(os.path.join(pr,'docs','learning','SKILL_REGISTRY.yaml'),{'skills':[]})
+    dump(os.path.join(tr,'docs','governance','TEMPLATE_MANIFEST.json'),{'files':[]}); dump(os.path.join(tr,'docs','governance','TEMPLATE_VERSION.yaml'),{'last_promotion_id':None})
+    assert subprocess.run([sys.executable,'-S',S,'--repo-root',pr,'--template-root',tr],text=True,capture_output=True).returncode!=0
+    dump(os.path.join(pr,'docs','learning','PROMOTION_QUEUE.yaml'),{'items':[{'learning_event_id':'E1','status':'DEFERRED','reason':'user decision later'}]})
+    assert subprocess.run([sys.executable,'-S',S,'--repo-root',pr,'--template-root',tr],text=True,capture_output=True).returncode==0
+    open(os.path.join(pr,'docs','learning','PROMOTION_LOG.jsonl'),'w').write(json.dumps({'promotion_id':'P','status':'PARTIAL'})+'\n')
+    assert subprocess.run([sys.executable,'-S',S,'--repo-root',pr,'--template-root',tr],text=True,capture_output=True).returncode!=0
+
+    dump(os.path.join(pr,'docs','learning','PROMOTION_QUEUE.yaml'),{'items':[{'learning_event_id':'E1','status':'PROMOTED'}]})
+    pp=os.path.join(pr,'docs','checklists','x.md'); tp=os.path.join(tr,'docs','checklists','x.md'); os.makedirs(os.path.dirname(pp),exist_ok=True); os.makedirs(os.path.dirname(tp),exist_ok=True)
+    open(pp,'w').write('same'); open(tp,'w').write('same'); hx=h(pp)
+    rec={'promotion_id':'PX','status':'PROMOTED','relative_path':'docs/checklists/x.md','project_hash_after':hx,'template_hash_after':hx,'promoted_at':'2026-01-01T00:00:00+00:00'}
+    open(os.path.join(pr,'docs','learning','PROMOTION_LOG.jsonl'),'w').write(json.dumps(rec)+'\n')
+    dump(os.path.join(tr,'docs','governance','TEMPLATE_MANIFEST.json'),{'files':[{'path':'docs/checklists/x.md','sha256':hx}]}); dump(os.path.join(tr,'docs','governance','TEMPLATE_VERSION.yaml'),{'last_promotion_id':'PX'})
+    assert subprocess.run([sys.executable,'-S',S,'--repo-root',pr,'--template-root',tr],text=True,capture_output=True).returncode==0
+    open(tp,'w').write('drift')
+    r=subprocess.run([sys.executable,'-S',S,'--repo-root',pr,'--template-root',tr],text=True,capture_output=True); assert r.returncode!=0 and 'template hash drift' in r.stdout
+print('PASS test-learning-gate')

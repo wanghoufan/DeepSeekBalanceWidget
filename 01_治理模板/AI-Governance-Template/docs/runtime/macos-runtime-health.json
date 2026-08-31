@@ -1,0 +1,234 @@
+{
+  "runtime_id": "MAC_RUNTIME_V1",
+  "checked_at": "2026-08-30T06:10:00.174728+00:00",
+  "status": "IMPLEMENTED_UNVERIFIED",
+  "runtime_health": "PASS",
+  "evidence_source": "TRUSTED_TERMINAL",
+  "checks": {
+    "platform": {
+      "result": "PASS",
+      "value": "darwin"
+    },
+    "orca_executable": {
+      "result": "PASS",
+      "path": "/opt/homebrew/bin/orca",
+      "version": "orca"
+    },
+    "orca_status": {
+      "result": "PASS",
+      "summary": {
+        "id": "local-status",
+        "ok": true,
+        "result": {
+          "target": {
+            "kind": "local"
+          },
+          "app": {
+            "running": true,
+            "pid": 46422,
+            "desktopWindowStatus": "available"
+          },
+          "runtime": {
+            "state": "ready",
+            "reachable": true,
+            "runtimeId": "6ae66b9d-b24c-4d27-a06d-9de59e574ebe",
+            "appVersion": "1.4.192",
+            "remoteUpdateSupport": {
+              "installMode": "interactive",
+              "automatic": true,
+              "reason": "available"
+            },
+            "capabilities": [
+              "runtime.status.compat.v1",
+              "runtime.environments.v1",
+              "remote-runtime.shared-control.v1",
+              "orchestration.federation.v1",
+              "orchestration.federation-control-mail.v1",
+              "orchestration.federation-lifecycle-settlement.v1",
+              "orchestration.worker-stop-verdict.v1",
+              "orchestration.worker-launch-preferences.v1",
+              "orchestration.contract.v1",
+              "browser.screencast.v1",
+              "browser.tab-create-known-id.v1",
+              "browser.clientHost.v1",
+              "browser.clientHost.pageMetadata.v1",
+              "browser.clientHost.automation.v1",
+              "browser.clientHost.fileChannel.v1",
+              "network.browserTunnel.v1",
+              "network.browserTunnel.executionHosts.v1",
+              "terminal.binary-stream.v1",
+              "terminal.multiplex.v1",
+              "workspace-ports.v1",
+              "mobile.tasks.v1",
+              "project-host-setup.v1",
+              "task-source-context.v1",
+              "workspace-run-context.v1",
+              "worktree.linked-work-item-context.v1",
+              "folder-workspace.path-status.v1",
+              "linear.issue-attribute-filter.v1",
+              "aiVault.v1",
+              "aiVault.session-titles.v1",
+              "terminal.query-reply-input.v1",
+              "terminal.paired-parking.v1",
+              "terminal.quick-commands.v1",
+              "worktree.create-idempotency.v1",
+              "terminal.create-idempotency.v2",
+              "session-tabs.close-intent.v1",
+              "session-tabs.authoritative-inventory.v1",
+              "agent-session.session-boundary.v1",
+              "updater.remote-control.v1",
+              "agent-session.host-authority.v1",
+              "agent-session.omp-resume-path.v1",
+              "agent-session.kimi-resume.v1",
+              "files.mutation-ownership.v1",
+              "worktree.visibility-defaults.v1",
+              "worktree.visibility-source-defaults.v1",
+              "accounts.import-host-credentials.v1",
+              "accounts.codex-reset-credit.v1",
+              "skills.install.v1",
+              "skills.install.bundle.v1",
+              "skills.install-cancel.v1",
+              "skills.install-progress.v1",
+              "skills.install-result.v2",
+              "skills.upload.v1",
+              "skills.manage.v1",
+              "skills.install-providers.v1",
+              "skills.delete.v1",
+              "automation.list-host-scope.v1",
+              "automation.owner-fencing.v1",
+              "automation.create-idempotency.v1",
+              "browser.certificate-trust.v1"
+            ]
+          },
+          "graph": {
+            "state": "ready"
+          }
+        },
+        "_meta": {
+          "runtimeId": "6ae66b9d-b24c-4d27-a06d-9de59e574ebe"
+        }
+      }
+    },
+    "orca_terminal_list": {
+      "result": "PASS",
+      "summary": {
+        "id": "01b5d273-7cfb-40f3-ad3a-f87c8c3c63ec",
+        "ok": true,
+        "result": {
+          "terminals": [
+            {
+              "handle": "term_194efdb5-f617-42cf-bac9-0dff2f440a46",
+              "ptyId": "e7bf23e8-9658-4fda-abb2-ac5932d832b8::/Users/zzymima0000/Developer/coding/1.Active/ing丨0807家庭保单数据看板 编程@@366cefa5",
+              "incarnationId": "6d0a70a9-ca85-48f3-9bad-b055a2f5af6d",
+              "orphaned": false,
+              "worktreeId": "e7bf23e8-9658-4fda-abb2-ac5932d832b8::/Users/zzymima0000/Developer/coding/1.Active/ing丨0807家庭保单数据看板 编程",
+              "worktreePath": "/Users/zzymima0000/Developer/coding/1.Active/ing丨0807家庭保单数据看板 编程",
+              "branch": "refs/heads/main",
+              "tabId": "02c44c41-5d12-44a6-ba05-d435e27d889f",
+              "leafId": "4b2244e2-d3d5-47b0-8f27-3679e6632464",
+              "title": "MAC_RUNTIME_V1 positive contract",
+              "connected": true,
+              "writable": true,
+              "lastOutputAt": 1788068768961,
+              "preview": "\"task_manager_dispatch_gateway\": true,\n\"builder_dispatch\": true,\n\"trusted_loaded_skill_identity\": true\n}\n}\nzzymima0000@zzymima0000deMacBook-Air ing丨0807家庭保单数据看板 编程 %",
+              "executionHostId": "local"
+            },
+            {
+              "handle": "term_654aefa8-92b7-4600-9822-60b7551b9397",
+              "ptyId": "e7bf23e8-9658-4fda-abb2-ac5932d832b8::/Users/zzymima0000/Developer/coding/1.Active/ing丨0807家庭保单数据看板 编程@@3abc0350",
+              "incarnationId": "a0e34e7e-2871-46af-9dec-671fd850a9ce",
+              "orphaned": false,
+              "worktreeId": "e7bf23e8-9658-4fda-abb2-ac5932d832b8::/Users/zzymima0000/Developer/coding/1.Active/ing丨0807家庭保单数据看板 编程",
+              "worktreePath": "/Users/zzymima0000/Developer/coding/1.Active/ing丨0807家庭保单数据看板 编程",
+              "branch": "refs/heads/main",
+              "tabId": "9cd754a2-d674-4533-a107-1d2f8f9c7317",
+              "leafId": "b947ac69-6fe0-4b1e-bfea-a18b295dc2d9",
+              "title": "OpenCode",
+              "connected": true,
+              "writable": true,
+              "lastOutputAt": 1788068771623,
+              "preview": "auto · Big Pickle OpenCode Zen                                    ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀tab agentsctrl+p commands● Tip Use ctrl+x 1 through ctrl+x 9 to switch pinned sessions~/Developer/coding/1.Active/ing丨0807家庭保单数据看板 编程:main1.18.25⊙ 1 MCP/status",
+              "executionHostId": "local",
+              "agentIdentity": "opencode"
+            },
+            {
+              "handle": "term_c9ca4aa4-1d65-4d61-8d9d-4756e1f7ae95",
+              "ptyId": "e7bf23e8-9658-4fda-abb2-ac5932d832b8::/Users/zzymima0000/Developer/coding/1.Active/ing丨0807家庭保单数据看板 编程@@58967079",
+              "incarnationId": "26f5deb8-83d7-463b-94a3-1a521ac17eff",
+              "orphaned": false,
+              "worktreeId": "e7bf23e8-9658-4fda-abb2-ac5932d832b8::/Users/zzymima0000/Developer/coding/1.Active/ing丨0807家庭保单数据看板 编程",
+              "worktreePath": "/Users/zzymima0000/Developer/coding/1.Active/ing丨0807家庭保单数据看板 编程",
+              "branch": "refs/heads/main",
+              "tabId": "b3edc1bf-1fc2-44f1-bb63-d8f5471e8e40",
+              "leafId": "d5b8318d-2a7d-482f-88d3-b70779f8b62c",
+              "title": "MAC_RUNTIME_V1 positive contract",
+              "connected": true,
+              "writable": true,
+              "lastOutputAt": 1788070148735,
+              "preview": "\"task_manager_dispatch_gateway\": true,\n\"builder_dispatch\": true,\n\"trusted_loaded_skill_identity\": true\n}\n}\nzzymima0000@zzymima0000deMacBook-Air ing丨0807家庭保单数据看板 编程 %",
+              "executionHostId": "local"
+            },
+            {
+              "handle": "term_6522a490-4aff-4f8b-9445-1aaeea3f8ad3",
+              "ptyId": "e7bf23e8-9658-4fda-abb2-ac5932d832b8::/Users/zzymima0000/Developer/coding/1.Active/ing丨0807家庭保单数据看板 编程@@00649010",
+              "incarnationId": "85abf99a-de35-439a-bc1b-801dba506665",
+              "orphaned": false,
+              "worktreeId": "e7bf23e8-9658-4fda-abb2-ac5932d832b8::/Users/zzymima0000/Developer/coding/1.Active/ing丨0807家庭保单数据看板 编程",
+              "worktreePath": "/Users/zzymima0000/Developer/coding/1.Active/ing丨0807家庭保单数据看板 编程",
+              "branch": "refs/heads/main",
+              "tabId": "a464701b-fd22-49dc-8ee1-2ac89564b9b3",
+              "leafId": "c79a1808-eb4f-4ab8-9784-83a1594f2ae7",
+              "title": "OpenCode",
+              "connected": true,
+              "writable": true,
+              "lastOutputAt": 1788070151248,
+              "preview": "to · Big Pickle OpenCode Zen                                    ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀tab agentsctrl+p commands● Tip Drag and drop images or PDFs into the terminal as context~/Developer/coding/1.Active/ing丨0807家庭保单数据看板 编程:main1.18.25⊙ 1 MCP/status",
+              "executionHostId": "local",
+              "agentIdentity": "opencode"
+            }
+          ],
+          "hostScope": {
+            "hostIds": [
+              "local"
+            ],
+            "omittedHostIds": []
+          },
+          "topologyRevisions": {
+            "e7bf23e8-9658-4fda-abb2-ac5932d832b8::/Users/zzymima0000/Developer/coding/1.Active/ing丨0807家庭保单数据看板 编程": 22
+          },
+          "totalCount": 4,
+          "truncated": false
+        },
+        "_meta": {
+          "runtimeId": "6ae66b9d-b24c-4d27-a06d-9de59e574ebe"
+        }
+      }
+    },
+    "orca_orchestration_guide": {
+      "result": "PASS",
+      "missing": []
+    },
+    "opencode": {
+      "result": "PASS",
+      "path": "/Users/zzymima0000/.nvm/versions/node/v24.19.0/bin/opencode",
+      "version": "1.18.25",
+      "auto_flag": true,
+      "checked_command": "opencode run --help"
+    },
+    "codex": {
+      "result": "PASS",
+      "path": "/Users/zzymima0000/.local/bin/codex",
+      "version": "codex-cli 0.151.0",
+      "sandbox_flag": true,
+      "approval_flag": true
+    }
+  },
+  "app_running": true,
+  "runtime_state": "ready",
+  "runtime_reachable": true,
+  "verified_at": null,
+  "negative_canary": "PASS",
+  "positive_contract": "FAIL",
+  "full_cross_project_learning_loop": "PASS",
+  "migration_audit": "FAIL"
+}

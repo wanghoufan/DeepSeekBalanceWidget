@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""Resolve a production model mapping for a governance role."""
+
+import argparse
+import ast
+import json
+import re
+import sys
+from pathlib import Path
+
+
+REGISTRY = Path(__file__).resolve().parents[3] / "docs" / "model" / "MODEL_ROUTING_REGISTRY.yaml"
+
+
+def _scalar(value):
+    value = value.strip()
+    if not value:
+        return None
+    if value in {"null", "NULL", "Null", "~"}:
+        return None
+    if value in {"true", "True"}:
+        return True
+    if value in {"false", "False"}:
+        return False
+    if value.startswith(("[", "{", '"', "'")):
+        try:
+            return ast.literal_eval(value)
+        except (SyntaxError, ValueError):
+            pass
+    return value
+
+
+def _yaml_subset_load(text):
+    """Parse the registry's simple YAML shape without a third-party package."""
+    root = {}
+    stack = [(-1, root, False)]
+    lines = []
+    for raw in text.splitlines():
+        if not raw.strip() or raw.lstrip().startswith("#"):
+            continue
+        indent = len(raw) - len(raw.lstrip(" "))
+        content = raw.strip()
+        # Registry values may contain a colon in plain text; only split a key
+        # when the colon is followed by whitespace or ends the line.
+        lines.append((indent, content))
+
+    for index, (indent, content) in enumerate(lines):
+        while stack[-1][0] >= indent and not (isinstance(stack[-1][1], list) and stack[-1][0] == indent):
+            stack.pop()
+        parent = stack[-1][1]
+        # The resolver only needs the production mappings; avoid interpreting
+        # the later model catalogue, whose list-of-mappings shape is irrelevant.
+        if content == "models:":
+            break
+        if content.startswith("- "):
+            if not isinstance(parent, list):
+                raise ValueError(f"invalid list indentation near: {content}")
+            item = content[2:].strip()
+            match = re.match(r"^([^:]+):(?:\s+(.*))?$", item)
+            if match:
+                mapping = {}
+                parent.append(mapping)
+                key, value = match.groups()
+                if value is None:
+                    mapping[key.strip()] = {}
+                    stack.append((indent, mapping[key.strip()], False))
+                else:
+                    mapping[key.strip()] = _scalar(value)
+                continue
+            parent.append(_scalar(item))
+            continue
+
+        if isinstance(parent, list) and stack[-1][0] == indent:
+            stack.pop()
+            parent = stack[-1][1]
+        match = re.match(r"^([^:]+):(?:\s+(.*))?$", content)
+        if not match or not isinstance(parent, dict):
+            raise ValueError(f"invalid mapping near: {content}")
+        key, value = match.groups()
+        key = key.strip()
+        if value is not None:
+            parent[key] = _scalar(value)
+            continue
+
+        next_content = lines[index + 1][1] if index + 1 < len(lines) else ""
+        child = [] if next_content.startswith("- ") else {}
+        parent[key] = child
+        stack.append((indent, child, isinstance(child, list)))
+    return root
+
+
+def load_registry():
+    with REGISTRY.open(encoding="utf-8") as handle:
+        try:
+            # Keep JSON as the primary loader for JSON-compatible registry files.
+            return json.load(handle)
+        except json.JSONDecodeError:
+            handle.seek(0)
+            return _yaml_subset_load(handle.read())
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Resolve a production model by role")
+    parser.add_argument("--role", required=True, help="governance role name")
+    args = parser.parse_args()
+
+    try:
+        mappings = load_registry()["current_production_mappings"]
+    except (OSError, KeyError, ValueError) as error:
+        print(f"error: unable to read model routing registry: {error}", file=sys.stderr)
+        return 1
+
+    mapping = mappings.get(args.role)
+    if mapping is None:
+        roles = ", ".join(sorted(mappings))
+        print(f"error: unknown role '{args.role}'. Available roles: {roles}", file=sys.stderr)
+        return 1
+
+    print(json.dumps({
+        "model_ref": mapping.get("model_ref"),
+        "effort": mapping.get("effort"),
+        "note": mapping.get("note"),
+    }, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

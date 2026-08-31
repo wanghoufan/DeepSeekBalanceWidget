@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+import argparse,json,os,sys
+from datetime import datetime,timezone
+sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
+from lock_utils import FileLock
+from learning_pattern_lib import merge_candidate
+
+def jsonl(p):
+    if not os.path.exists(p): return []
+    return [json.loads(x) for x in open(p,encoding='utf-8') if x.strip()]
+
+def identity(root,did):
+    p=os.path.join(root,'docs','runtime','TRUSTED_DISPATCH_IDENTITY.jsonl')
+    for x in reversed(jsonl(p)):
+        if x.get('dispatch_id')==did: return x
+    raise SystemExit('DENY: trusted dispatch identity missing')
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--repo-root',default='.')
+    ap.add_argument('--dispatch-id',required=True)
+    ap.add_argument('--merge-request-id',required=True)
+    a=ap.parse_args(); root=os.path.abspath(a.repo_root)
+    ident=identity(root,a.dispatch_id)
+    if ident.get('actual_role')!='experience-recorder':
+        raise SystemExit('DENY: merge gateway requires Experience Recorder identity')
+    ledger=os.path.join(root,'docs','learning','PATTERN_MERGE_REQUESTS.jsonl')
+    rs=[x for x in jsonl(ledger) if x.get('merge_request_id')==a.merge_request_id]
+    req=next((x for x in rs if x.get('status')=='REQUESTED'),None)
+    if not req: raise SystemExit('DENY: merge request missing')
+    if any(x.get('status')=='APPLIED' for x in rs): raise SystemExit('DENY: merge request replay')
+    if req.get('requester_dispatch_id')!=a.dispatch_id:
+        raise SystemExit('DENY: requester dispatch mismatch')
+
+    out=merge_candidate(root,req['source_pattern_id'],req['target_pattern_id'],decision='EXPERIENCE_RECORDER_MERGE')
+    with FileLock(ledger+'.lock','pattern-merge-ledger',timeout=5,stale_after=15):
+        with open(ledger,'a',encoding='utf-8') as f:
+            f.write(json.dumps({
+              **req,'status':'APPLIED','applied_at':datetime.now(timezone.utc).isoformat()
+            },ensure_ascii=False,separators=(',',':'))+'\n')
+            f.flush(); os.fsync(f.fileno())
+    print(json.dumps(out,ensure_ascii=False))
+if __name__=='__main__': main()

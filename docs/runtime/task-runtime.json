@@ -1,0 +1,22 @@
+{
+  "schema_version": "2.3.1-learning-final",
+  "authoritative_projection_of": "ORCA runtime / Dispatch Gateway trusted adapter",
+  "task_manager_write": false,
+  "current_task_id": null,
+  "current_task_status": "NONE",
+  "current_dispatch_id": null,
+  "current_dispatch_status": "NONE",
+  "active_human_gate": false,
+  "fix_budget_exhausted": false,
+  "external_blocker": {
+    "active": false,
+    "no_verified_fallback": false,
+    "reason": null
+  },
+  "safety_block": {
+    "active": false,
+    "reason": null
+  },
+  "trusted_user_session_pause": false,
+  "updated_at": null
+}

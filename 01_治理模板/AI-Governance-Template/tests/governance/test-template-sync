@@ -1,0 +1,26 @@
+#!/usr/bin/env python3
+import json, os, subprocess, sys, tempfile
+from _testlib import trusted_template_sync
+S=os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..','scripts','governance','template-sync'))
+
+with tempfile.TemporaryDirectory() as d:
+    os.makedirs(os.path.join(d,'docs','governance'))
+    open(os.path.join(d,'x.txt'),'w').write('x')
+    json.dump({
+      'schema_version':'4','authoritative':True,'governance_version':'V2.3.1',
+      'template_version':'2.3.1-template.1','delivery_version':'TEST',
+      'last_promotion_id':None,'updated_at':None
+    },open(os.path.join(d,'docs','governance','TEMPLATE_VERSION.yaml'),'w'))
+
+    # Direct Agent-style call is interface-level DENY.
+    direct=subprocess.run([sys.executable,'-S',S,'--template-root',d,'--promotion-id','P1','--delivery-version','TEST'],
+                          text=True,capture_output=True)
+    assert direct.returncode!=0
+
+    out=trusted_template_sync(d,promotion_id='P1',initialize=False,delivery_version='TEST',script_path=S)
+    assert out['template_version']=='2.3.1-template.2'
+    v=json.load(open(os.path.join(d,'docs','governance','TEMPLATE_VERSION.yaml')))
+    assert v['delivery_version']=='TEST'
+    assert json.load(open(os.path.join(d,'docs','governance','TEMPLATE_MANIFEST.json')))['template_fingerprint']
+
+print('PASS test-template-sync')

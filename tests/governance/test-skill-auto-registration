@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+import hashlib, json, os, shutil, subprocess, sys, tempfile
+from _testlib import trusted_template_sync
+BASE=os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..'))
+
+def h(p):
+    return hashlib.sha256(open(p,'rb').read()).hexdigest()
+def app(p,o):
+    os.makedirs(os.path.dirname(p),exist_ok=True)
+    with open(p,'a',encoding='utf-8') as f:
+        f.write(json.dumps(o)+'\n')
+
+with tempfile.TemporaryDirectory() as d:
+    tr=os.path.join(d,'template'); pr=os.path.join(d,'project')
+    shutil.copytree(BASE,tr,ignore=shutil.ignore_patterns('__pycache__','*.pyc','*.lock'))
+    TS=os.path.join(tr,'scripts','governance','template-sync')
+    BS=os.path.join(tr,'scripts','governance','bootstrap-project')
+    trusted_template_sync(tr,initialize=True,delivery_version='TEST',script_path=TS)
+    subprocess.run([sys.executable,'-S',BS,'--template-root',tr,'--project-root',pr,'--project-id','P','--repo-id','R'],
+                   check=True,capture_output=True,text=True,timeout=30)
+
+    app(os.path.join(pr,'docs','runtime','TRUSTED_DISPATCH_IDENTITY.jsonl'),
+        {'dispatch_id':'DQA','worker_id':'WQA','task_id':'T','actual_role':'qa'})
+    app(os.path.join(pr,'docs','runtime','TRUSTED_DISPATCH_IDENTITY.jsonl'),
+        {'dispatch_id':'DB','worker_id':'WB','task_id':'T','actual_role':'builder'})
+
+    e={
+      'project_id':'P','stage_id':'S','trigger':'REUSABLE_PATTERN',
+      'symptom':'screenshot feedback SOP','root_cause':'manual steps',
+      'current_fix':'local SOP','impact':'LOW','candidate_type':'SKILL',
+      'reusable':True,'learning_pattern_id':'SCREENSHOT_FEEDBACK_FLOW',
+      'stable_multi_step_sop':True
+    }
+    w=subprocess.run([sys.executable,'-S',os.path.join(pr,'scripts','governance','write-learning-event'),'--repo-root',pr],
+                     input=json.dumps(e),text=True,capture_output=True,timeout=15)
+    assert w.returncode==0,w.stderr
+    ev=json.loads(w.stdout)
+
+    skill=os.path.join(d,'SKILL.md')
+    open(skill,'w').write('# screenshot skill\n')
+    rel='skills/ui-screenshot-feedback/SKILL.md'
+    vr={
+      'what_test':'real-task-validation','target':rel,'target_hash':h(skill),
+      'target_version':'1','result':'PASS',
+      'skill_risk':{
+        'required_tools':['read'],'write_scope':'NONE','shell_scope':'NONE',
+        'network_scope':'NONE','computer_use':False,'destructive':False,'risk_level':'LOW'
+      }
+    }
+    rv=subprocess.run(
+      [sys.executable,'-S',os.path.join(pr,'scripts','governance','write-validation-receipt'),
+       '--repo-root',pr,'--dispatch-id','DQA','--scope','SKILL_PROMOTION'],
+      input=json.dumps(vr),text=True,capture_output=True,timeout=15
+    )
+    assert rv.returncode==0,rv.stderr
+    rid=json.loads(rv.stdout)['validation_receipt_id']
+
+    req={
+      'learning_event_id':ev['event_id'],'change_type':'SKILL','risk':'LOW',
+      'relative_path':rel,'content_file':skill,'validation_receipt_id':rid,
+      'skill_registration':{
+        'skill_id':'UI_SCREENSHOT_FEEDBACK','trigger':['screenshot_feedback'],
+        'task_types':['QA','PRODUCT_REVIEW'],'applicable_roles':['qa','product-reviewer'],
+        'required_capabilities':['vision'],'required_tools':['read'],
+        'write_scope':'NONE','shell_scope':'NONE','network_scope':'NONE',
+        'computer_use':False,'destructive':False,'risk_level':'LOW'
+      }
+    }
+    rp=os.path.join(d,'req.json')
+    json.dump(req,open(rp,'w'))
+
+    env=dict(os.environ)
+    env['ORCA_GOVERNANCE_INTERNAL_SECRET']='test-secret-for-governance-internal-capability-123456789'
+    pg=subprocess.run(
+      [sys.executable,'-S',os.path.join(pr,'scripts','governance','promotion-gateway'),
+       '--request',rp,'--project-root',pr,'--template-root',tr,'--dispatch-id','DB'],
+      text=True,capture_output=True,timeout=30,env=env
+    )
+    assert pg.returncode==0,pg.stderr
+    out=json.loads(pg.stdout)
+    assert out['status']=='PROMOTED'
+    assert out['skill_id']=='UI_SCREENSHOT_FEEDBACK'
+
+    for rr in (pr,tr):
+        reg=json.load(open(os.path.join(rr,'docs','learning','SKILL_REGISTRY.yaml'),encoding='utf-8'))
+        s=next(x for x in reg['skills'] if x['skill_id']=='UI_SCREENSHOT_FEEDBACK')
+        assert s['status']=='PRODUCTION'
+        assert s['validated_receipt_id']==rid
+        assert s['validated_content_hash']==h(skill)
+        assert s['source_project_id']=='P'
+        assert s['source_learning_event_id']==ev['event_id']
+        assert os.path.exists(os.path.join(rr,rel))
+
+print('PASS test-skill-auto-registration')

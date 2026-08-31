@@ -1,0 +1,28 @@
+{
+  "schema_version": "1",
+  "active_discovery": "tests/governance/test-*",
+  "deprecated_directory": "tests/deprecated",
+  "deprecated": {
+    "test-cross-project-skill-reuse": {
+      "status": "DEPRECATED",
+      "reason": "replaced by test-full-cross-project-learning-loop"
+    },
+    "test-learning-router": {
+      "status": "DEPRECATED",
+      "reason": "replaced by test-user-correction-escalation"
+    },
+    "test-promotion-gateway": {
+      "status": "DEPRECATED",
+      "reason": "replaced by test-stale-promotion-preflight + test-skill-auto-registration + internal writer tests"
+    },
+    "test-skill-promotion": {
+      "status": "DEPRECATED",
+      "reason": "replaced by test-skill-auto-registration + test-skill-hash-drift"
+    },
+    "test-skill-usage-effectiveness": {
+      "status": "DEPRECATED",
+      "reason": "replaced by test-effectiveness-independent-confirmation; old test conflated LOADED/USED and self-confirmed effectiveness",
+      "replacement": "test-effectiveness-independent-confirmation"
+    }
+  }
+}

@@ -1,0 +1,47 @@
+# AGENTS.md — DeepSeek Balance Widget
+
+桌面悬浮小工具：监控 DeepSeek API 余额与 ChatGPT Plus 用量。Windows 用 WPF，macOS 用 Avalonia，二者共用 `Models/` 与 `Services/` 业务逻辑。
+
+## 怎么跑起来
+
+- 开发构建/测试：`dotnet build DeepSeekBalanceWidget.sln` 然后 `dotnet test DeepSeekBalanceWidget.sln`
+- 本地发布 Windows 单文件：`powershell -File scripts/publish.ps1 -Runtime win-x64` → `release/DeepSeekBalanceWidget.exe`（本机未安装 `pwsh`/PowerShell 7，勿用 `pwsh`）
+- macOS 打包：`./scripts/publish-macos.sh arm64`（或 x64）
+- 日常使用运行 `release/DeepSeekBalanceWidget.exe`，不要从 `src/.../bin/Debug/` 启动
+
+## 技术栈
+
+- .NET 8（Windows `net8.0-windows` + WPF；macOS `net8.0` + Avalonia 11）
+- 余额源：DeepSeek 开放平台 API；Plus 用量源：本机 `~/.cc-switch/codex_oauth_auth.json`
+- 私钥：Windows DPAPI（CurrentUser），macOS 登录钥匙串；均不上传仓库
+
+## 目录与约定
+
+- `src/DeepSeekBalanceWidget`（WPF）与 `src/DeepSeekBalanceWidget.Mac`（Avalonia）共用逻辑，Mac 通过 `<Compile Include="../...">` 链接 Windows 的 `Models/`、`Services/`
+- `docs/plans/` 为历史方案记录；`CHANGELOG.md` 是当前功能真相来源
+- `release/`、`*.exe`、`*.zip`、`*.app`、`*.dmg`、`artifacts/runtime/`、`config.json` 已 gitignore，不入库
+
+## ⚠️ 发布前版本一致性（易漏）
+
+打 tag 前必须把三处版本一起升到与 `CHANGELOG.md` 顶部一致，否则 exe / app 内部版本与 GitHub tag 不符：
+1. `src/DeepSeekBalanceWidget/DeepSeekBalanceWidget.csproj` 的 `<Version>`/`<AssemblyVersion>`/`<FileVersion>`
+2. `src/DeepSeekBalanceWidget.Mac/DeepSeekBalanceWidget.Mac.csproj` 的 `<Version>`
+3. `src/DeepSeekBalanceWidget.Mac/Info.plist` 的 `CFBundleShortVersionString` 与 `CFBundleVersion`
+
+Release 包的 zip 文件名由 git tag（`v*`）决定，README 下载表的三处版本号也要同步改。
+
+## 当前状态与下一步
+
+- 当前已发布版本：0.4.0（ChatGPT 双窗口对齐表格、胶囊区块顺序 `AgentOrder`、WorkBuddy 占位）
+- 工作区已提交未发布（见 CHANGELOG「未发布」）：OpenCode Go 额度监测（替代原 WB 占位）、预警系统重构（常驻弹窗 + 循环警报声、位置可配）、设置页改版（左侧导航 + 监测项 2×2 卡片）、胶囊整改（单行宽、按钮贴最右、刷新时间右上角、OC 区块、GPT 列距收紧）与若干修复
+- 下一步：① 择机打 `v*` tag 升版本发布——升版须同步 csproj / Mac csproj / Info.plist / README 三处版本号（详见上方「发布前版本一致性」），否则 exe/app 内部版本与 GitHub tag 不符；② 或先补齐 WorkBuddy 实际额度接入
+
+## 治理模板已应用
+
+本项目按 `01_治理模板/AI-Governance-Template` 的 ORCA V2.3.1 / Delivery V1.10 结构治理。完整角色职责、状态机、权限边界和学习闭环以 `docs/governance/`、`docs/workflow/`、`docs/roles/` 为准。
+
+- 固定角色仅限 Planner、Builder、Code Reviewer、QA、Product Reviewer、Task Manager、Experience Recorder、neat-freak。
+- Task Manager 只负责记录、分类、排序、Dispatch、Evidence 消费和 Continuation 判断，不直接修改业务源码、模型/启动注册表、运行时健康或权威治理状态。
+- 高影响范围、Stage/P0、Human Gate、权限、Resource Policy、Production Model Mapping 等决定必须由用户确认。
+- 真实 macOS Runtime 为第一验证环境；当前项目仅完成治理结构迁移，未将模板机器的 ORCA/OpenCode/Codex 运行凭据当作本项目证据。
+- 权威机器状态包括 `docs/progress/governance-state.yaml`、`docs/runtime/runtime-health.json`、`docs/governance/PROJECT_GOVERNANCE_APPLIED.yaml`；Markdown 文件是可读视图。

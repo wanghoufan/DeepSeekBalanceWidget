@@ -1,0 +1,10 @@
+{
+  "schema_version": "4",
+  "authoritative": true,
+  "governance_version": "V2.3.1",
+  "template_version": "2.3.1-template.25",
+  "delivery_version": "V1.10",
+  "first_runtime": "MAC_RUNTIME_V1",
+  "last_promotion_id": "BOOTSTRAP-AD798D421578",
+  "updated_at": "2026-08-30T09:51:37.392207+00:00"
+}

@@ -1,0 +1,389 @@
+<Window x:Class="DeepSeekBalanceWidget.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize"
+        WindowStartupLocation="Manual" SizeToContent="WidthAndHeight" MinWidth="400" MaxWidth="1200"
+        MouseLeftButtonDown="Window_MouseLeftButtonDown"
+        MouseEnter="Window_MouseEnter"
+        MouseLeave="Window_MouseLeave"
+        LocationChanged="Window_LocationChanged">
+  <Window.Resources>
+    <DropShadowEffect x:Key="CardShadow" BlurRadius="16" ShadowDepth="2"
+                      Direction="270" Opacity="0.45" Color="{DynamicResource CapsuleShadowColor}"/>
+    <Style x:Key="TitleBtn" TargetType="Button">
+      <Setter Property="Width" Value="23"/>
+      <Setter Property="Height" Value="23"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="FontFamily" Value="Segoe Fluent Icons"/>
+      <Setter Property="Foreground" Value="{DynamicResource CapsuleTextBrush}"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Margin" Value="1,0,0,0"/>
+      <Setter Property="HorizontalAlignment" Value="Right"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Foreground" Value="{DynamicResource CapsuleTextBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource CapsuleHoverBrush}"/>
+        </Trigger>
+        <Trigger Property="IsPressed" Value="True">
+            <Setter Property="Background" Value="{DynamicResource CapsulePressedBrush}"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+  </Window.Resources>
+  <Window.ContextMenu>
+    <ContextMenu>
+      <MenuItem Header="立即刷新" Click="RefreshMenu_Click"/>
+      <MenuItem Header="设置..." Click="SettingsMenu_Click"/>
+      <MenuItem Header="恢复默认位置" Click="ResetPositionMenu_Click"/>
+      <Separator/>
+      <MenuItem Header="退出" Click="ExitMenu_Click"/>
+    </ContextMenu>
+  </Window.ContextMenu>
+
+  <Grid>
+    <!-- 完整卡片（默认形态） -->
+    <Border x:Name="Card" CornerRadius="14" Padding="14,12,14,13" Margin="10"
+            Background="{DynamicResource CapsuleBgBrush}"
+            BorderBrush="{DynamicResource CapsuleBorderBrush}" BorderThickness="1"
+            Effect="{StaticResource CardShadow}">
+      <StackPanel>
+        <!-- 标题行：仅窗口操作按钮，状态点并入余额行 -->
+        <Border HorizontalAlignment="Right" CornerRadius="7" Padding="2"
+                Background="{DynamicResource CapsuleControlBrush}" BorderBrush="{DynamicResource CapsuleControlBrush}" BorderThickness="1">
+          <StackPanel Orientation="Horizontal">
+            <Button x:Name="MiniBtn" Style="{StaticResource TitleBtn}" Content="&#xE921;"
+                    ToolTip="切换迷你模式" Click="MiniBtn_Click"/>
+            <Button x:Name="PinBtn" Style="{StaticResource TitleBtn}" Content="&#xE718;"
+                    ToolTip="置顶开关" Click="PinBtn_Click"/>
+            <Button x:Name="TrayBtn" Style="{StaticResource TitleBtn}" Content="&#xE70D;"
+                    ToolTip="隐藏到托盘" Click="TrayBtn_Click"/>
+            <Button x:Name="CloseBtn" Style="{StaticResource TitleBtn}" Content="&#xE8BB;"
+                    Margin="5,0,0,0" ToolTip="退出" Click="CloseBtn_Click"/>
+          </StackPanel>
+        </Border>
+
+        <!-- 余额行：余额 · 状态点 · 变动（同行）· 高峰指示（DS 相关，同行）；随 DS 监测开关显隐 -->
+        <Grid x:Name="BalanceRow" Margin="0,10,0,8">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <TextBlock x:Name="BalanceText" Grid.Column="0" Text="¥ --.--" FontSize="16"
+                     FontWeight="SemiBold" Foreground="{DynamicResource CapsuleTextBrush}" FontFamily="Segoe UI"
+                     VerticalAlignment="Center"/>
+          <TextBlock x:Name="StatusDot" Grid.Column="1" Text="●" FontSize="12" Foreground="{DynamicResource CapsuleSuccessBrush}"
+                     Margin="6,0,0,0" VerticalAlignment="Center"/>
+          <TextBlock x:Name="ChangeText" Grid.Column="2" Text="--" FontSize="11"
+                     Foreground="{DynamicResource CapsuleSubtleTextBrush}" FontFamily="Segoe UI" Margin="8,0,0,0"
+                     VerticalAlignment="Center"/>
+          <Border x:Name="PeakText" Grid.Column="3" Background="Transparent">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock x:Name="PeakDot" Text="●" Foreground="{DynamicResource CapsuleSuccessBrush}" FontSize="8"
+                         VerticalAlignment="Center"/>
+              <TextBlock x:Name="PeakLabel" Text="非高峰" Foreground="{DynamicResource CapsuleSubtleTextBrush}" FontSize="11"
+                         Margin="4,0,0,0" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Border>
+        </Grid>
+        <StackPanel x:Name="CodexPanel">
+          <Border Height="1" Background="{DynamicResource CapsuleTrackBrush}" Margin="0,2,0,7"/>
+          <TextBlock Text="ChatGPT 账号额度" FontSize="11" Foreground="{DynamicResource CapsuleTextBrush}" Margin="0,0,0,2"/>
+          <!-- 表头 -->
+          <Grid Margin="0,0,0,2">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="48"/>
+              <ColumnDefinition Width="92"/>
+              <ColumnDefinition Width="48"/>
+              <ColumnDefinition Width="92"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="账号" FontSize="9" Foreground="{DynamicResource CapsuleMutedTextBrush}"/>
+            <TextBlock Grid.Column="1" Text="5h 额度" FontSize="9" Foreground="{DynamicResource CapsuleMutedTextBrush}" HorizontalAlignment="Right"/>
+            <TextBlock Grid.Column="2" Text="5h 恢复" FontSize="9" Foreground="{DynamicResource CapsuleMutedTextBrush}" HorizontalAlignment="Right"/>
+            <TextBlock Grid.Column="3" Text="周额度" FontSize="9" Foreground="{DynamicResource CapsuleMutedTextBrush}" HorizontalAlignment="Right"/>
+            <TextBlock Grid.Column="4" Text="周恢复" FontSize="9" Foreground="{DynamicResource CapsuleMutedTextBrush}" HorizontalAlignment="Right"/>
+          </Grid>
+          <!-- 账号 1 行：账号名 | 5h 额度 | 5h 恢复 | 周额度 | 周恢复（逐列对齐） -->
+          <Grid x:Name="CodexAccount1Row" Margin="0,1,0,1">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="50"/>
+              <ColumnDefinition Width="88"/>
+              <ColumnDefinition Width="50"/>
+              <ColumnDefinition Width="88"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="CodexAccount1Name" Text="--" FontSize="13" Foreground="{DynamicResource CapsuleTextBrush}"
+                       FontFamily="Segoe UI" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+            <TextBlock x:Name="CodexFiveText" Grid.Column="1" Text="--" FontSize="16" FontWeight="SemiBold"
+                       Foreground="{DynamicResource CapsuleEmphasisTextBrush}" FontFamily="Segoe UI" HorizontalAlignment="Right"/>
+            <TextBlock x:Name="CodexFiveResetText" Grid.Column="2" Text="--" FontSize="13"
+                       Foreground="{DynamicResource CapsuleSubtleTextBrush}" FontFamily="Segoe UI" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+            <TextBlock x:Name="CodexWeeklyText" Grid.Column="3" Text="--" FontSize="16" FontWeight="SemiBold"
+                       Foreground="{DynamicResource CapsuleEmphasisTextBrush}" FontFamily="Segoe UI" HorizontalAlignment="Right"/>
+            <TextBlock x:Name="CodexWeeklyResetText" Grid.Column="4" Text="--" FontSize="13"
+                       Foreground="{DynamicResource CapsuleSubtleTextBrush}" FontFamily="Segoe UI" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+          </Grid>
+          <!-- 账号 2 行 -->
+          <Grid x:Name="CodexAccount2Row" Margin="0,1,0,7">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="50"/>
+              <ColumnDefinition Width="88"/>
+              <ColumnDefinition Width="50"/>
+              <ColumnDefinition Width="88"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="CodexAccount2Name" Text="--" FontSize="13" Foreground="{DynamicResource CapsuleTextBrush}"
+                       FontFamily="Segoe UI" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+            <TextBlock x:Name="CodexFiveText2" Grid.Column="1" Text="--" FontSize="16" FontWeight="SemiBold"
+                       Foreground="{DynamicResource CapsuleEmphasisTextBrush}" FontFamily="Segoe UI" HorizontalAlignment="Right"/>
+            <TextBlock x:Name="CodexFiveResetText2" Grid.Column="2" Text="--" FontSize="13"
+                       Foreground="{DynamicResource CapsuleSubtleTextBrush}" FontFamily="Segoe UI" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+            <TextBlock x:Name="CodexWeeklyText2" Grid.Column="3" Text="--" FontSize="16" FontWeight="SemiBold"
+                       Foreground="{DynamicResource CapsuleEmphasisTextBrush}" FontFamily="Segoe UI" HorizontalAlignment="Right"/>
+            <TextBlock x:Name="CodexWeeklyResetText2" Grid.Column="4" Text="--" FontSize="13"
+                       Foreground="{DynamicResource CapsuleSubtleTextBrush}" FontFamily="Segoe UI" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+          </Grid>
+        </StackPanel>
+        <!-- OpenCode Go 额度：三窗口明细（剩余 / 美元估算 / 恢复时间点 / 倒计时） -->
+        <StackPanel x:Name="OpenCodePanel">
+          <Border Height="1" Background="{DynamicResource CapsuleTrackBrush}" Margin="0,2,0,7"/>
+          <TextBlock x:Name="OpenCodeTitleText" Text="OpenCode Go 额度" FontSize="11" Foreground="{DynamicResource CapsuleTextBrush}" Margin="0,0,0,2"/>
+          <Grid Margin="0,0,0,2">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="34"/>
+              <ColumnDefinition Width="44"/>
+              <ColumnDefinition Width="118"/>
+              <ColumnDefinition Width="96"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="窗口" FontSize="9" Foreground="{DynamicResource CapsuleMutedTextBrush}"/>
+            <TextBlock Grid.Column="1" Text="剩余" FontSize="9" Foreground="{DynamicResource CapsuleMutedTextBrush}" HorizontalAlignment="Right"/>
+            <TextBlock Grid.Column="2" Text="已用 / 限额（估算）" FontSize="9" Foreground="{DynamicResource CapsuleMutedTextBrush}"/>
+            <TextBlock Grid.Column="3" Text="恢复" FontSize="9" Foreground="{DynamicResource CapsuleMutedTextBrush}"/>
+            <TextBlock Grid.Column="4" Text="倒计时" FontSize="9" Foreground="{DynamicResource CapsuleMutedTextBrush}" HorizontalAlignment="Right"/>
+          </Grid>
+          <Grid Margin="0,1,0,1">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="34"/>
+              <ColumnDefinition Width="44"/>
+              <ColumnDefinition Width="118"/>
+              <ColumnDefinition Width="96"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="5h" FontSize="13" Foreground="{DynamicResource CapsuleTextBrush}" VerticalAlignment="Center"/>
+            <TextBlock x:Name="OpenCodeFivePct" Grid.Column="1" Text="--" FontSize="16" FontWeight="SemiBold"
+                       Foreground="{DynamicResource CapsuleEmphasisTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+            <TextBlock x:Name="OpenCodeFiveUsed" Grid.Column="2" Text="--" FontSize="13"
+                       Foreground="{DynamicResource CapsuleSubtleTextBrush}" VerticalAlignment="Center"/>
+            <TextBlock x:Name="OpenCodeFiveReset" Grid.Column="3" Text="--" FontSize="13"
+                       Foreground="{DynamicResource CapsuleSubtleTextBrush}" VerticalAlignment="Center"/>
+            <TextBlock x:Name="OpenCodeFiveCd" Grid.Column="4" Text="--" FontSize="13"
+                       Foreground="{DynamicResource CapsuleSubtleTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+          </Grid>
+          <Grid Margin="0,1,0,1">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="34"/>
+              <ColumnDefinition Width="44"/>
+              <ColumnDefinition Width="118"/>
+              <ColumnDefinition Width="96"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="周" FontSize="13" Foreground="{DynamicResource CapsuleTextBrush}" VerticalAlignment="Center"/>
+            <TextBlock x:Name="OpenCodeWeeklyPct" Grid.Column="1" Text="--" FontSize="16" FontWeight="SemiBold"
+                       Foreground="{DynamicResource CapsuleEmphasisTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+            <TextBlock x:Name="OpenCodeWeeklyUsed" Grid.Column="2" Text="--" FontSize="13"
+                       Foreground="{DynamicResource CapsuleSubtleTextBrush}" VerticalAlignment="Center"/>
+            <TextBlock x:Name="OpenCodeWeeklyReset" Grid.Column="3" Text="--" FontSize="13"
+                       Foreground="{DynamicResource CapsuleSubtleTextBrush}" VerticalAlignment="Center"/>
+            <TextBlock x:Name="OpenCodeWeeklyCd" Grid.Column="4" Text="--" FontSize="13"
+                       Foreground="{DynamicResource CapsuleSubtleTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+          </Grid>
+          <Grid Margin="0,1,0,7">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="34"/>
+              <ColumnDefinition Width="44"/>
+              <ColumnDefinition Width="118"/>
+              <ColumnDefinition Width="96"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="月" FontSize="13" Foreground="{DynamicResource CapsuleTextBrush}" VerticalAlignment="Center"/>
+            <TextBlock x:Name="OpenCodeMonthlyPct" Grid.Column="1" Text="--" FontSize="16" FontWeight="SemiBold"
+                       Foreground="{DynamicResource CapsuleEmphasisTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+            <TextBlock x:Name="OpenCodeMonthlyUsed" Grid.Column="2" Text="--" FontSize="13"
+                       Foreground="{DynamicResource CapsuleSubtleTextBrush}" VerticalAlignment="Center"/>
+            <TextBlock x:Name="OpenCodeMonthlyReset" Grid.Column="3" Text="--" FontSize="13"
+                       Foreground="{DynamicResource CapsuleSubtleTextBrush}" VerticalAlignment="Center"/>
+            <TextBlock x:Name="OpenCodeMonthlyCd" Grid.Column="4" Text="--" FontSize="13"
+                       Foreground="{DynamicResource CapsuleSubtleTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+          </Grid>
+        </StackPanel>
+        <TextBlock x:Name="RefreshTimeText" Text="上次刷新：--" FontSize="11"
+                   Foreground="{DynamicResource CapsuleSubtleTextBrush}"/>
+      </StackPanel>
+    </Border>
+
+    <!-- 迷你胶囊（可选形态）：单行宽 · DS / GPT（两账号四列）/ OC（三行带进度条）三区块 + 按钮贴最右 + 刷新时间右上角 -->
+    <Border x:Name="MiniCard" Visibility="Collapsed" CornerRadius="16"
+            Padding="10,6" Margin="10" Cursor="Hand"
+            Background="{DynamicResource CapsuleBgBrush}"
+            BorderBrush="{DynamicResource CapsuleBorderBrush}" BorderThickness="1"
+            Effect="{StaticResource CardShadow}"
+            ToolTip="拖动调整位置，双击展开"
+            MouseLeftButtonDown="MiniCard_MouseLeftButtonDown">
+      <Grid VerticalAlignment="Center">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <!-- 左：内容区（DS+GPT+OC）上下居中 -->
+          <StackPanel x:Name="MiniContentPanel" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+            <!-- DS 区块：余额 + 变动（小字上标风格）+ 高峰/非高峰指示 -->
+            <StackPanel x:Name="MiniDeepSeekBlock" Orientation="Horizontal" VerticalAlignment="Center">
+              <TextBlock x:Name="MiniDsLabel" Text="DS" FontSize="13" FontWeight="SemiBold"
+                         Foreground="{DynamicResource CapsuleTextBrush}" FontFamily="Segoe UI"/>
+              <TextBlock x:Name="MiniBalanceText" Text="¥ --.--" FontSize="14" FontWeight="SemiBold"
+                         Foreground="{DynamicResource CapsuleTextBrush}" FontFamily="Segoe UI" Margin="5,0,0,0"/>
+              <TextBlock x:Name="MiniChangeText" Text="" FontSize="10"
+                         Foreground="{DynamicResource CapsuleSubtleTextBrush}" FontFamily="Segoe UI" Margin="4,0,0,0"
+                         VerticalAlignment="Bottom" Padding="0,0,0,1"/>
+              <TextBlock x:Name="MiniPeakDot" Text="●" FontSize="9" Margin="8,0,0,0"
+                         VerticalAlignment="Center" Foreground="{DynamicResource CapsuleSuccessBrush}"/>
+              <TextBlock x:Name="MiniPeakLabel" Text="非高峰" FontSize="11" Margin="3,0,0,0"
+                         Foreground="{DynamicResource CapsuleSubtleTextBrush}" VerticalAlignment="Center"/>
+            </StackPanel>
+            <!-- GPT 区块：两个账号上下两行，四列对齐 -->
+            <Border x:Name="MiniGptBlock" Background="{DynamicResource CapsuleControlBrush}" BorderBrush="{DynamicResource CapsuleControlBrush}" BorderThickness="1"
+                    CornerRadius="8" Margin="10,0,0,0" Padding="2,0" VerticalAlignment="Center">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="12"/>
+                  <ColumnDefinition Width="32"/>
+                  <ColumnDefinition Width="42"/>
+                  <ColumnDefinition Width="32"/>
+                  <ColumnDefinition Width="46"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock x:Name="MiniGptA1Label" Text="M" FontSize="12" FontWeight="SemiBold"
+                           LineHeight="13" LineStackingStrategy="BlockLineHeight"
+                           Foreground="{DynamicResource CapsuleTextBrush}" FontFamily="Segoe UI" VerticalAlignment="Center"/>
+                <TextBlock x:Name="MiniGptA1Five" Grid.Column="1" Text="--" FontSize="12" FontWeight="SemiBold"
+                           LineHeight="13" LineStackingStrategy="BlockLineHeight"
+                           Foreground="{DynamicResource CapsuleEmphasisTextBrush}" FontFamily="Segoe UI" HorizontalAlignment="Right"/>
+                <TextBlock x:Name="MiniGptA1FiveCd" Grid.Column="2" Text="--" FontSize="11"
+                           LineHeight="13" LineStackingStrategy="BlockLineHeight"
+                           Foreground="{DynamicResource CapsuleSubtleTextBrush}" FontFamily="Segoe UI" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                <TextBlock x:Name="MiniGptA1Weekly" Grid.Column="3" Text="--" FontSize="12" FontWeight="SemiBold"
+                           LineHeight="13" LineStackingStrategy="BlockLineHeight"
+                           Foreground="{DynamicResource CapsuleEmphasisTextBrush}" FontFamily="Segoe UI" HorizontalAlignment="Right"/>
+                <TextBlock x:Name="MiniGptA1WeeklyCd" Grid.Column="4" Text="--" FontSize="11"
+                           LineHeight="13" LineStackingStrategy="BlockLineHeight"
+                           Foreground="{DynamicResource CapsuleSubtleTextBrush}" FontFamily="Segoe UI" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                <TextBlock x:Name="MiniGptA2Label" Grid.Row="1" Text="W" FontSize="12" FontWeight="SemiBold"
+                           LineHeight="13" LineStackingStrategy="BlockLineHeight"
+                           Foreground="{DynamicResource CapsuleTextBrush}" FontFamily="Segoe UI" VerticalAlignment="Center"/>
+                <TextBlock x:Name="MiniGptA2Five" Grid.Row="1" Grid.Column="1" Text="--" FontSize="12" FontWeight="SemiBold"
+                           LineHeight="13" LineStackingStrategy="BlockLineHeight"
+                           Foreground="{DynamicResource CapsuleEmphasisTextBrush}" FontFamily="Segoe UI" HorizontalAlignment="Right"/>
+                <TextBlock x:Name="MiniGptA2FiveCd" Grid.Row="1" Grid.Column="2" Text="--" FontSize="11"
+                           LineHeight="13" LineStackingStrategy="BlockLineHeight"
+                           Foreground="{DynamicResource CapsuleSubtleTextBrush}" FontFamily="Segoe UI" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                <TextBlock x:Name="MiniGptA2Weekly" Grid.Row="1" Grid.Column="3" Text="--" FontSize="12" FontWeight="SemiBold"
+                           LineHeight="13" LineStackingStrategy="BlockLineHeight"
+                           Foreground="{DynamicResource CapsuleEmphasisTextBrush}" FontFamily="Segoe UI" HorizontalAlignment="Right"/>
+                <TextBlock x:Name="MiniGptA2WeeklyCd" Grid.Row="1" Grid.Column="4" Text="--" FontSize="11"
+                           LineHeight="13" LineStackingStrategy="BlockLineHeight"
+                           Foreground="{DynamicResource CapsuleSubtleTextBrush}" FontFamily="Segoe UI" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+              </Grid>
+            </Border>
+            <!-- OC 区块：OpenCode 三行（5h / 周 / 月），OC 标签跨三行水平+垂直居中，带进度条 -->
+            <Border x:Name="MiniOpenCodeBlock" Background="{DynamicResource CapsuleControlBrush}" BorderBrush="{DynamicResource CapsuleControlBrush}"
+                    BorderThickness="1" CornerRadius="8" Margin="10,0,0,0" Padding="6,3"
+                    VerticalAlignment="Center">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="26"/>
+                  <ColumnDefinition Width="34"/>
+                  <ColumnDefinition Width="52"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="18"/>
+                  <RowDefinition Height="21"/>
+                  <RowDefinition Height="21"/>
+                </Grid.RowDefinitions>
+                <TextBlock x:Name="MiniOcLabel" Text="OC" Grid.RowSpan="3" FontSize="12" FontWeight="SemiBold"
+                           Foreground="{DynamicResource CapsuleTextBrush}" FontFamily="Segoe UI" VerticalAlignment="Center"
+                           HorizontalAlignment="Center"/>
+                <TextBlock x:Name="MiniOcFivePct" Grid.Column="1" Text="--" FontSize="12" FontWeight="SemiBold"
+                           Foreground="{DynamicResource CapsuleEmphasisTextBrush}" FontFamily="Segoe UI" VerticalAlignment="Center"
+                           HorizontalAlignment="Right" TextAlignment="Right"/>
+                <TextBlock x:Name="MiniOcFiveCd" Grid.Column="2" Text="--" FontSize="11"
+                           Foreground="{DynamicResource CapsuleSubtleTextBrush}" FontFamily="Segoe UI" VerticalAlignment="Center"
+                           HorizontalAlignment="Right" TextAlignment="Right" Margin="4,0,0,0"/>
+                <Grid x:Name="MiniOcFiveBarTrack" Grid.Column="3" Width="28" Height="5" Margin="8,0,0,0"
+                      VerticalAlignment="Center" HorizontalAlignment="Center">
+                  <Border CornerRadius="2.5" Background="{DynamicResource CapsuleTrackBrush}"/>
+                  <Border x:Name="MiniOcFiveBar" CornerRadius="2.5"
+                          Background="{DynamicResource CapsuleSuccessBrush}" HorizontalAlignment="Left" VerticalAlignment="Stretch" Width="0"/>
+                </Grid>
+                <TextBlock x:Name="MiniOcWeeklyPct" Grid.Row="1" Grid.Column="1" Text="--" FontSize="12" FontWeight="SemiBold"
+                           Foreground="{DynamicResource CapsuleEmphasisTextBrush}" FontFamily="Segoe UI" VerticalAlignment="Center"
+                           HorizontalAlignment="Right" TextAlignment="Right"/>
+                <TextBlock x:Name="MiniOcWeeklyCd" Grid.Row="1" Grid.Column="2" Text="--" FontSize="11"
+                           Foreground="{DynamicResource CapsuleSubtleTextBrush}" FontFamily="Segoe UI" VerticalAlignment="Center"
+                           HorizontalAlignment="Right" TextAlignment="Right" Margin="4,0,0,0"/>
+                <Grid x:Name="MiniOcWeeklyBarTrack" Grid.Row="1" Grid.Column="3" Width="28" Height="5" Margin="8,0,0,0"
+                      VerticalAlignment="Center" HorizontalAlignment="Center">
+                  <Border CornerRadius="2.5" Background="{DynamicResource CapsuleTrackBrush}"/>
+                  <Border x:Name="MiniOcWeeklyBar" CornerRadius="2.5"
+                          Background="{DynamicResource CapsuleSuccessBrush}" HorizontalAlignment="Left" VerticalAlignment="Stretch" Width="0"/>
+                </Grid>
+                <TextBlock x:Name="MiniOcMonthlyPct" Grid.Row="2" Grid.Column="1" Text="--" FontSize="12" FontWeight="SemiBold"
+                           Foreground="{DynamicResource CapsuleEmphasisTextBrush}" FontFamily="Segoe UI" VerticalAlignment="Center"
+                           HorizontalAlignment="Right" TextAlignment="Right"/>
+                <TextBlock x:Name="MiniOcMonthlyCd" Grid.Row="2" Grid.Column="2" Text="--" FontSize="11"
+                           Foreground="{DynamicResource CapsuleSubtleTextBrush}" FontFamily="Segoe UI" VerticalAlignment="Center"
+                           HorizontalAlignment="Right" TextAlignment="Right" Margin="4,0,0,0"/>
+                <Grid x:Name="MiniOcMonthlyBarTrack" Grid.Row="2" Grid.Column="3" Width="28" Height="5" Margin="8,0,0,0"
+                      VerticalAlignment="Center" HorizontalAlignment="Center">
+                  <Border CornerRadius="2.5" Background="{DynamicResource CapsuleTrackBrush}"/>
+                  <Border x:Name="MiniOcMonthlyBar" CornerRadius="2.5"
+                          Background="{DynamicResource CapsuleSuccessBrush}" HorizontalAlignment="Left" VerticalAlignment="Stretch" Width="0"/>
+                </Grid>
+              </Grid>
+            </Border>
+            <!-- WB 区块：单行占位（默认随监测开关关闭） -->
+            <TextBlock x:Name="MiniWorkbuddyBlock" Text="WB --" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource CapsuleSubtleTextBrush}" FontFamily="Segoe UI" VerticalAlignment="Center"
+                       Visibility="Collapsed"/>
+          </StackPanel>
+          <!-- 右侧：刷新时间（右上角小字）+ 按钮组（右下角），上下排列、垂直居中 -->
+          <StackPanel Grid.Column="1" Orientation="Vertical" VerticalAlignment="Center" Margin="12,0,0,0">
+            <!-- 右上角：刷新时间小字 -->
+            <TextBlock x:Name="MiniRefreshTimeText" Text="" FontSize="9"
+                       Foreground="{DynamicResource CapsuleMutedTextBrush}" FontFamily="Segoe UI" HorizontalAlignment="Right" Margin="0,0,0,2"/>
+            <!-- 右下角：贴边 / 最小化 / 退出三按钮 -->
+            <StackPanel x:Name="MiniButtonBar" Orientation="Horizontal" HorizontalAlignment="Right">
+              <Button x:Name="MiniEdgeAutoHideBtn" Style="{StaticResource TitleBtn}" Content="&#xE72E;"
+                      ToolTip="开启贴边隐藏" Click="MiniEdgeAutoHideBtn_Click" VerticalAlignment="Center"/>
+              <Button x:Name="MiniMinBtn" Style="{StaticResource TitleBtn}" Content="&#xE921;"
+                      Margin="4,0,0,0" ToolTip="最小化到任务栏" Click="MiniMinBtn_Click" VerticalAlignment="Center"/>
+              <Button x:Name="MiniCloseBtn" Style="{StaticResource TitleBtn}" Content="&#xE8BB;"
+                      Margin="4,0,0,0" ToolTip="退出" Click="MiniCloseBtn_Click" VerticalAlignment="Center"/>
+            </StackPanel>
+          </StackPanel>
+        </Grid>
+      </Border>
+  </Grid>
+</Window>

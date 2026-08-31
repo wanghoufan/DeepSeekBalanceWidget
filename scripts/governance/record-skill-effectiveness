@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+import argparse, json, os, sys, uuid
+from datetime import datetime, timezone
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lock_utils import FileLock, atomic_write_json
+
+INDEPENDENT_ROLES={'qa','product-reviewer','code-reviewer','automated-test'}
+ALLOWED_RESULTS={
+  'PROVISIONAL_EFFECTIVE','PROVISIONAL_INEFFECTIVE',
+  'CONFIRMED_EFFECTIVE','CONFIRMED_INEFFECTIVE'
+}
+
+def jsonl(p):
+    if not os.path.exists(p): return []
+    return [json.loads(x) for x in open(p,encoding='utf-8') if x.strip()]
+
+def find_used_usage(root,uid):
+    p=os.path.join(root,'docs','learning','SKILL_USAGE.jsonl')
+    for x in reversed(jsonl(p)):
+        if x.get('usage_id')==uid and x.get('usage_state')=='USED':
+            return x
+    raise SystemExit('DENY: USED skill usage record missing')
+
+def identity(root,did):
+    p=os.path.join(root,'docs','runtime','TRUSTED_DISPATCH_IDENTITY.jsonl')
+    for x in reversed(jsonl(p)):
+        if x.get('dispatch_id')==did:
+            return x
+    raise SystemExit('DENY: trusted evaluator dispatch identity missing')
+
+def validate_schema(e,independent):
+    required=['expected_outcome','actual_outcome','helped','failure','manual_intervention','rework_count','effectiveness_result']
+    miss=[k for k in required if k not in e]
+    if miss: raise SystemExit('missing effectiveness fields: '+','.join(miss))
+    result=e['effectiveness_result']
+    if result not in ALLOWED_RESULTS:
+        raise SystemExit('DENY: invalid effectiveness_result')
+    if independent and not result.startswith('CONFIRMED_'):
+        raise SystemExit('DENY: independent evaluation must use CONFIRMED result')
+    if not independent and not result.startswith('PROVISIONAL_'):
+        raise SystemExit('DENY: same-dispatch evaluation can only be PROVISIONAL')
+    effective=result.endswith('EFFECTIVE') and not result.endswith('INEFFECTIVE')
+    if effective and (e.get('helped') is not True or e.get('failure') is True):
+        raise SystemExit('DENY: contradictory effectiveness fields')
+    if result.endswith('INEFFECTIVE') and e.get('helped') is True and e.get('failure') is False:
+        raise SystemExit('DENY: contradictory ineffectiveness fields')
+    if not isinstance(e.get('rework_count'),int) or e['rework_count']<0:
+        raise SystemExit('DENY: invalid rework_count')
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--project-root',required=True)
+    ap.add_argument('--dispatch-id',required=True)
+    ap.add_argument('--usage-id',required=True)
+    ap.add_argument('--effectiveness-json')
+    a=ap.parse_args()
+    root=os.path.abspath(a.project_root)
+    usage=find_used_usage(root,a.usage_id)
+    ident=identity(root,a.dispatch_id)
+    independent=(a.dispatch_id!=usage.get('dispatch_id') and ident.get('actual_role') in INDEPENDENT_ROLES)
+    same_dispatch=(a.dispatch_id==usage.get('dispatch_id'))
+    if not (independent or same_dispatch):
+        raise SystemExit('DENY: evaluator is neither same dispatch nor approved independent verifier')
+    if ident.get('task_id')!=usage.get('task_id'):
+        raise SystemExit('DENY: evaluator task mismatch')
+
+    e=json.loads(a.effectiveness_json if a.effectiveness_json else sys.stdin.read())
+    validate_schema(e,independent)
+    now=datetime.now(timezone.utc).isoformat()
+    rec={
+      'effectiveness_id':'SEFF-'+uuid.uuid4().hex[:12],
+      'verification_level':'INDEPENDENT_CONFIRMED' if independent else 'SELF_PROVISIONAL',
+      'usage_id':a.usage_id,
+      'skill_id':usage.get('skill_id'),
+      'project_id':usage.get('project_id'),
+      'task_id':usage.get('task_id'),
+      'dispatch_id':usage.get('dispatch_id'),
+      'evaluator_dispatch_id':a.dispatch_id,
+      'evaluator_worker_id':ident.get('worker_id'),
+      'evaluator_role':ident.get('actual_role'),
+      **e,
+      'recorded_at':now
+    }
+    p=os.path.join(root,'docs','learning','SKILL_EFFECTIVENESS.jsonl')
+    os.makedirs(os.path.dirname(p),exist_ok=True)
+    with FileLock(p+'.lock','skill-effectiveness',timeout=5,stale_after=15):
+        with open(p,'a',encoding='utf-8') as f:
+            f.write(json.dumps(rec,ensure_ascii=False,separators=(',',':'))+'\n')
+            f.flush(); os.fsync(f.fileno())
+
+    # Only independent confirmed evidence closes the lifecycle and can update pattern effectiveness.
+    if independent:
+        reg=os.path.join(root,'docs','learning','SKILL_REGISTRY.yaml')
+        pattern_id=None
+        with FileLock(reg+'.lock','skill-effectiveness-registry',timeout=5,stale_after=15):
+            d=json.load(open(reg,encoding='utf-8'))
+            for s in d.get('skills',[]):
+                if s.get('skill_id')==usage.get('skill_id'):
+                    s['lifecycle_status']='EFFECTIVENESS_RECORDED'
+                    s['last_effectiveness_at']=now
+                    s['last_effectiveness_result']=e.get('effectiveness_result')
+                    pattern_id=s.get('source_canonical_pattern_id')
+                    break
+            atomic_write_json(reg,d)
+
+        if pattern_id:
+            preg=os.path.join(root,'docs','learning','LEARNING_PATTERN_REGISTRY.yaml')
+            with FileLock(preg+'.lock','pattern-effectiveness',timeout=5,stale_after=15):
+                d=json.load(open(preg,encoding='utf-8'))
+                pat=d.get('patterns',{}).get(pattern_id)
+                if pat:
+                    pat['effectiveness']='EFFECTIVE' if e.get('effectiveness_result')=='CONFIRMED_EFFECTIVE' else 'INEFFECTIVE'
+                    pat['effectiveness_recorded_at']=now
+                    atomic_write_json(preg,d)
+
+    print(json.dumps(rec,ensure_ascii=False))
+
+if __name__=='__main__':
+    main()

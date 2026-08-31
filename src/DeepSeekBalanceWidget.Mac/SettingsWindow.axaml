@@ -1,0 +1,419 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="DeepSeekBalanceWidget.SettingsWindow"
+        Title="DeepSeek 余额监控设置"
+        Width="780" Height="620" MinWidth="720" MinHeight="560"
+        CanResize="True"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource WindowBackgroundBrush}">
+  <Window.Styles>
+    <!-- Keep labels and choice controls centered when a row's height is driven by
+         a neighboring input or when the window is resized. -->
+    <Style Selector="TextBlock">
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="CheckBox">
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="RadioButton">
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border">
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.title">
+      <Setter Property="FontSize" Value="16" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource TextStrongBrush}" />
+    </Style>
+    <Style Selector="TextBlock.hint">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.section-title">
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource TextMainBrush}" />
+      <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+    <Style Selector="TextBox.input">
+      <Setter Property="Height" Value="32" />
+      <Setter Property="Padding" Value="8,0" />
+      <Setter Property="Background" Value="{DynamicResource ControlBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextStrongBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="ComboBox.input">
+      <Setter Property="Height" Value="32" />
+      <Setter Property="Background" Value="{DynamicResource ControlBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextStrongBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
+    </Style>
+    <Style Selector="CheckBox">
+      <Setter Property="Foreground" Value="{DynamicResource TextMainBrush}" />
+    </Style>
+    <Style Selector="RadioButton">
+      <Setter Property="Foreground" Value="{DynamicResource TextMainBrush}" />
+    </Style>
+    <!-- 左侧导航项（RadioButton 伪装） -->
+    <Style Selector="RadioButton.nav">
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="Padding" Value="14,10" />
+      <Setter Property="Margin" Value="0,2" />
+      <Setter Property="Background" Value="{DynamicResource TransparentBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondBrush}" />
+    </Style>
+    <Style Selector="RadioButton.nav:checked">
+      <Setter Property="Background" Value="{DynamicResource NavSelectedBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PrimaryLightBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button.secondary">
+      <Setter Property="Height" Value="32" />
+      <Setter Property="Padding" Value="14,0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Background" Value="{DynamicResource ControlBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextMainBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="Height" Value="32" />
+      <Setter Property="Padding" Value="18,0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Background" Value="{DynamicResource PrimaryBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Button.danger">
+      <Setter Property="Height" Value="32" />
+      <Setter Property="Padding" Value="10,0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Background" Value="{DynamicResource ControlBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PeakWarningBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PeakWarningBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+  </Window.Styles>
+
+  <DockPanel>
+    <!-- 底部操作栏：跨分区常驻 -->
+    <Border DockPanel.Dock="Bottom" Padding="20,12"
+            Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,1,0,0">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock x:Name="ErrorText" Foreground="{DynamicResource PeakWarningBrush}" TextWrapping="Wrap"
+                   VerticalAlignment="Center" Margin="0,0,16,0" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+          <Button Content="取消" Classes="secondary" Click="Cancel_Click" />
+          <Button x:Name="ApplyBtn" Content="应用" Classes="secondary" Click="ApplyBtn_Click" />
+          <Button Content="保存" Classes="primary" Width="88" IsDefault="True"
+                  Click="Save_Click" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Grid ColumnDefinitions="160,*">
+      <!-- 左侧导航 -->
+      <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}"
+              BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,1,0">
+        <StackPanel Margin="14,20,12,0">
+          <TextBlock Text="设置" FontSize="17" FontWeight="SemiBold"
+                     Foreground="{DynamicResource TextStrongBrush}" Margin="4,0,0,18" />
+          <RadioButton x:Name="NavMonitoring" Classes="nav" GroupName="Nav"
+                       Content="监测项" IsChecked="True" Click="Nav_Click" />
+          <RadioButton x:Name="NavAlerts" Classes="nav" GroupName="Nav"
+                       Content="预警" Click="Nav_Click" />
+          <RadioButton x:Name="NavAppearance" Classes="nav" GroupName="Nav"
+                       Content="界面" Click="Nav_Click" />
+          <RadioButton x:Name="NavGeneral" Classes="nav" GroupName="Nav"
+                       Content="通用" Click="Nav_Click" />
+        </StackPanel>
+      </Border>
+
+      <!-- 右侧内容区：四个 ScrollViewer 叠放，只显示当前选中项 -->
+      <Grid Grid.Column="1">
+        <!-- ============ 监测项 ============ -->
+        <ScrollViewer x:Name="PanelMonitoring" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Margin="24,22,24,20" Spacing="8">
+            <TextBlock Text="监测项" Classes="title" />
+            <TextBlock Classes="hint" Margin="0,0,0,8"
+                       Text="各监测项可独立启停；关闭后胶囊与详细面板均隐藏对应区块。" />
+            <Grid RowDefinitions="Auto,14,Auto" ColumnDefinitions="*,14,*">
+              <!-- DS 卡片 -->
+              <Border Grid.Row="0" Grid.Column="0" Background="{DynamicResource SurfaceBrush}"
+                      BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="16">
+                <StackPanel Spacing="6">
+                  <CheckBox x:Name="EnableDsCheck" Content="DeepSeek 余额"
+                            ToolTip.Tip="关闭后胶囊与详细面板均不显示 DS 区块" />
+                  <TextBlock Classes="hint" Margin="22,-2,0,2" Text="读取 DeepSeek 开放平台余额" />
+                  <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                    <TextBox x:Name="ApiKeyBox" Classes="input"
+                             Watermark="留空会保留已保存的 Key" PasswordChar="●" />
+                    <Button Grid.Column="1" Content="清除 Key" Classes="danger" Margin="8,0,0,0"
+                            Click="ClearDsKey_Click" ToolTip.Tip="清除 DeepSeek API Key" />
+                  </Grid>
+                  <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,2,0,0">
+                    <Button x:Name="TestDsBtn" Content="测试连接" Classes="secondary"
+                            Width="86" Click="TestDs_Click" />
+                    <TextBlock x:Name="DsTestResult" Classes="hint" VerticalAlignment="Center" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+
+              <!-- GPT 卡片 -->
+              <Border Grid.Row="0" Grid.Column="2" Background="{DynamicResource SurfaceBrush}"
+                      BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="16">
+                <StackPanel Spacing="6">
+                  <CheckBox x:Name="EnableCodexCheck" Content="ChatGPT Plus 额度"
+                            ToolTip.Tip="通过本机已登录的 Codex 读取 ChatGPT Plus 用量窗口" />
+                  <TextBlock Classes="hint" Margin="22,-2,0,2"
+                             Text="读本机 CC Switch / Codex 登录态，无需 Key" />
+                  <Border Height="32" Background="{DynamicResource TransparentBrush}" />
+                  <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,2,0,0">
+                    <Button x:Name="TestCodexBtn" Content="测试连接" Classes="secondary"
+                            Width="86" Click="TestCodex_Click" />
+                    <TextBlock x:Name="CodexTestResult" Classes="hint" VerticalAlignment="Center" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+
+              <!-- OC 卡片 -->
+              <Border Grid.Row="2" Grid.Column="0" Background="{DynamicResource SurfaceBrush}"
+                      BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="16">
+                <StackPanel Spacing="6">
+                  <CheckBox x:Name="EnableOcCheck" Content="OpenCode Go 额度"
+                            ToolTip.Tip="读取 OpenCode Go 的 5 小时 / 周额度 / 月额度" />
+                  <TextBlock Classes="hint" Margin="22,-2,0,2"
+                             Text="留空则自动读本机 auth.json" />
+                  <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                    <TextBox x:Name="OpenCodeKeyBox" Classes="input"
+                             Watermark="留空会保留已保存的 Key" PasswordChar="●" />
+                    <Button Grid.Column="1" Content="清除 Key" Classes="danger" Margin="8,0,0,0"
+                            Click="ClearOpenCodeKey_Click" ToolTip.Tip="清除 OpenCode API Key" />
+                  </Grid>
+                  <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,2,0,0">
+                    <Button x:Name="TestOcBtn" Content="测试连接" Classes="secondary"
+                            Width="86" Click="TestOc_Click" />
+                    <TextBlock x:Name="OcTestResult" Classes="hint" VerticalAlignment="Center" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+
+              <!-- WB 卡片：当前没有数据源，保留与 Windows 一致的占位入口 -->
+              <Border Grid.Row="2" Grid.Column="2" Background="{DynamicResource SurfaceBrush}"
+                      BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="16">
+                <StackPanel Spacing="6">
+                  <CheckBox x:Name="EnableWbCheck" Content="WorkBuddy 占位" />
+                  <TextBlock Classes="hint" Margin="22,-2,0,2" Text="无数据源，仅显示占位" />
+                  <Border Height="32" Background="{DynamicResource TransparentBrush}" />
+                  <Button Content="测试连接" Classes="secondary" Width="86"
+                          IsEnabled="False" ToolTip.Tip="WorkBuddy 数据源尚未接入" />
+                </StackPanel>
+              </Border>
+            </Grid>
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- ============ 预警 ============ -->
+        <ScrollViewer x:Name="PanelAlerts" IsVisible="False" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Margin="24,22,24,20" Spacing="14">
+            <TextBlock Text="预警" Classes="title" />
+            <TextBlock Classes="hint" Margin="0,-6,0,2"
+                       Text="低余额告警与额度预警共用警报声设置；ChatGPT 与 OpenCode 的额度档位可分别配置。" />
+
+            <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="10" Padding="16">
+              <StackPanel Spacing="8">
+                <TextBlock Text="ChatGPT 额度预警" Classes="section-title" />
+                <CheckBox x:Name="EnableGptAlerts" Content="开启 ChatGPT 额度预警通知"
+                          ToolTip.Tip="剩余额度降到设定档位时弹窗预警；额度恢复到高位时也会通知" />
+                <Grid ColumnDefinitions="*,14,*">
+                  <StackPanel Grid.Column="0" Spacing="4">
+                    <TextBlock Classes="hint" Text="预警档位（剩余%，逗号分隔）" />
+                    <TextBox x:Name="GptThresholdsBox" Classes="input"
+                             Watermark="例如 20, 10"
+                             HorizontalContentAlignment="Center" TextAlignment="Center" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="2" Spacing="4">
+                    <TextBlock Classes="hint" Text="恢复判定阈值（%）" />
+                    <TextBox x:Name="GptRecoveredBox" Classes="input"
+                             HorizontalContentAlignment="Center" TextAlignment="Center" />
+                  </StackPanel>
+                </Grid>
+                <CheckBox x:Name="GptWeeklyCheck" Content="周额度也参与预警"
+                          ToolTip.Tip="周额度耗尽需等一周才恢复，建议开启" />
+              </StackPanel>
+            </Border>
+
+            <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="10" Padding="16">
+              <StackPanel Spacing="8">
+                <TextBlock Text="OpenCode 额度预警" Classes="section-title" />
+                <CheckBox x:Name="EnableOcAlerts" Content="开启 OpenCode 额度预警通知"
+                          ToolTip.Tip="OpenCode 的 5 小时、周、月额度分别按下方配置参与预警" />
+                <Grid RowDefinitions="Auto,10,Auto" ColumnDefinitions="*,14,*">
+                  <StackPanel Grid.Column="0" Spacing="4">
+                    <TextBlock Classes="hint" Text="5 小时额度档位（剩余%，逗号分隔）" />
+                    <TextBox x:Name="OcThresholds5hBox" Classes="input"
+                             Watermark="例如 20, 10"
+                             HorizontalContentAlignment="Center" TextAlignment="Center" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="2" Spacing="4">
+                    <TextBlock Classes="hint" Text="周额度档位（剩余%，逗号分隔）" />
+                    <TextBox x:Name="OcThresholdsWeeklyBox" Classes="input"
+                             Watermark="例如 20, 10"
+                             HorizontalContentAlignment="Center" TextAlignment="Center" />
+                  </StackPanel>
+                  <StackPanel Grid.Row="2" Grid.Column="0" Spacing="4">
+                    <TextBlock Classes="hint" Text="月额度档位（剩余%，逗号分隔）" />
+                    <TextBox x:Name="OcThresholdsMonthlyBox" Classes="input"
+                             Watermark="例如 20, 10"
+                             HorizontalContentAlignment="Center" TextAlignment="Center" />
+                  </StackPanel>
+                  <StackPanel Grid.Row="2" Grid.Column="2" Spacing="4">
+                    <TextBlock Classes="hint" Text="恢复判定阈值（%）" />
+                    <TextBox x:Name="OcRecoveredBox" Classes="input"
+                             HorizontalContentAlignment="Center" TextAlignment="Center" />
+                  </StackPanel>
+                </Grid>
+                <StackPanel Orientation="Horizontal" Spacing="20">
+                  <CheckBox x:Name="OcWeeklyCheck" Content="周额度参与预警"
+                            ToolTip.Tip="周额度耗尽需等一周才恢复，建议开启" />
+                  <CheckBox x:Name="OcMonthlyCheck" Content="月额度参与预警"
+                            ToolTip.Tip="月额度耗尽需等一个月才恢复，建议开启" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+
+            <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="10" Padding="16">
+              <StackPanel Spacing="8">
+                <TextBlock Text="预警行为" Classes="section-title" />
+                <CheckBox x:Name="AlertSoundCheck" Content="播放警报声（低余额 / 额度预警）" />
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                  <TextBlock Text="警报声风格" Foreground="{DynamicResource TextSecondBrush}" VerticalAlignment="Center"
+                             Margin="0,0,12,0" />
+                  <ComboBox x:Name="AlertSoundStyleBox" Grid.Column="1" Classes="input">
+                    <ComboBoxItem Content="短鸣（单次提示音）" Tag="Beep" />
+                    <ComboBoxItem Content="递升（逐级升调）" Tag="Ascending" />
+                    <ComboBoxItem Content="递降（逐级降调）" Tag="Descending" />
+                    <ComboBoxItem Content="清脆（高音连奏）" Tag="Chime" />
+                    <ComboBoxItem Content="铃声（谐波衰减）" Tag="Bell" />
+                    <ComboBoxItem Content="叮咚（双音提示）" Tag="DingDong" />
+                    <ComboBoxItem Content="快速（短脉冲）" Tag="Rapid" />
+                    <ComboBoxItem Content="慢脉冲（长间隔）" Tag="SlowPulse" />
+                    <ComboBoxItem Content="柔和（单音缓起伏）" Tag="Soft" />
+                    <ComboBoxItem Content="标准（双音交替）" Tag="Standard" />
+                    <ComboBoxItem Content="急促（短脉冲）" Tag="Urgent" />
+                  </ComboBox>
+                  <Button x:Name="TestAlarmBtn" Grid.Column="2" Content="试听"
+                          Classes="secondary" Width="56" Margin="10,0,0,0"
+                          Click="TestAlarm_Click" ToolTip.Tip="播放 3 秒警报声试听" />
+                </Grid>
+                <StackPanel Orientation="Horizontal" Spacing="20">
+                  <RadioButton x:Name="AlertContinuousRadio" Content="持续报警（点击「知道了」停止）"
+                               GroupName="AlertMode" />
+                  <RadioButton x:Name="AlertLimitedRadio" Content="限时（≥10 秒）"
+                               GroupName="AlertMode" />
+                </StackPanel>
+                <Grid ColumnDefinitions="Auto,*">
+                  <TextBlock Text="警报窗位置" Foreground="{DynamicResource TextSecondBrush}" VerticalAlignment="Center"
+                             Margin="0,0,12,0" />
+                  <ComboBox x:Name="AlertPositionBox" Grid.Column="1" Classes="input">
+                    <ComboBoxItem Content="右上角" Tag="TopRight" />
+                    <ComboBoxItem Content="右侧中间" Tag="RightCenter" />
+                    <ComboBoxItem Content="右下角" Tag="BottomRight" />
+                  </ComboBox>
+                </Grid>
+              </StackPanel>
+            </Border>
+
+            <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="10" Padding="16">
+              <StackPanel Spacing="8">
+                <TextBlock Text="低余额告警（DeepSeek）" Classes="section-title" />
+                <Grid ColumnDefinitions="*,14,*">
+                  <StackPanel Grid.Column="0" Spacing="4">
+                    <TextBlock Classes="hint" Text="低余额阈值（元）" />
+                    <TextBox x:Name="ThresholdBox" Classes="input"
+                             HorizontalContentAlignment="Center" TextAlignment="Center" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="2" Spacing="4">
+                    <TextBlock Classes="hint" Text="异常下降百分比（%）" />
+                    <TextBox x:Name="ChangePercentBox" Classes="input"
+                             HorizontalContentAlignment="Center" TextAlignment="Center" />
+                  </StackPanel>
+                </Grid>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- ============ 界面 ============ -->
+        <ScrollViewer x:Name="PanelAppearance" IsVisible="False" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Margin="24,22,24,20" Spacing="14">
+            <TextBlock Text="界面" Classes="title" />
+            <TextBlock Classes="hint" Margin="0,-6,0,2" Text="胶囊的显示行为与主题设置。" />
+
+            <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="10" Padding="16">
+              <StackPanel Spacing="8">
+                <TextBlock Text="行为" Classes="section-title" />
+                <CheckBox x:Name="TopmostCheck" Content="始终置顶" />
+                <CheckBox x:Name="ShowPeakCheck" Content="显示预计高峰时段" />
+                <CheckBox x:Name="MiniModeCheck" Content="迷你胶囊模式（默认收起）" />
+              </StackPanel>
+            </Border>
+
+            <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="10" Padding="16">
+              <StackPanel Spacing="8">
+                <TextBlock Text="主题" Classes="section-title" />
+                <TextBlock Classes="hint" Text="设置窗口的颜色主题，保存后由应用下次启动时使用。" />
+                <StackPanel Orientation="Horizontal" Spacing="20">
+                  <RadioButton x:Name="ThemeLightRadio" Content="浅色" GroupName="ThemeMode" Click="ThemeRadio_Click" />
+                  <RadioButton x:Name="ThemeDarkRadio" Content="深色" GroupName="ThemeMode" Click="ThemeRadio_Click" />
+                  <RadioButton x:Name="ThemeSystemRadio" Content="跟随系统" GroupName="ThemeMode" Click="ThemeRadio_Click" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- ============ 通用 ============ -->
+        <ScrollViewer x:Name="PanelGeneral" IsVisible="False" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Margin="24,22,24,20" Spacing="14">
+            <TextBlock Text="通用" Classes="title" />
+            <TextBlock Classes="hint" Margin="0,-6,0,2" Text="刷新频率、币种与系统级选项。" />
+            <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="10" Padding="16">
+              <StackPanel Spacing="8">
+                <TextBlock Classes="hint" Text="刷新间隔（秒，5-3600）" />
+                <TextBox x:Name="IntervalBox" Classes="input" Margin="0,0,0,8"
+                         HorizontalContentAlignment="Center" TextAlignment="Center" />
+                <TextBlock Classes="hint" Text="币种" />
+                <ComboBox x:Name="CurrencyBox" Classes="input" Margin="0,0,0,8">
+                  <ComboBoxItem Content="CNY" />
+                  <ComboBoxItem Content="USD" />
+                </ComboBox>
+                <CheckBox x:Name="MockCheck" Content="使用 Mock 数据（离线测试）" />
+                <CheckBox x:Name="AutoStartCheck" Content="登录时自动启动" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+    </Grid>
+  </DockPanel>
+</Window>

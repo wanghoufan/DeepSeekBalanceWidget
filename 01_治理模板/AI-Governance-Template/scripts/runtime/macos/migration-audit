@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+import argparse,json,os,subprocess,sys
+from datetime import datetime,timezone
+sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
+from common import require_macos
+
+def run_step(name,cmd,timeout):
+    r=subprocess.run(cmd,capture_output=True,text=True,timeout=timeout)
+    return {'name':name,'exit_code':r.returncode,'stdout':r.stdout[-12000:],
+            'stderr':r.stderr[-12000:],'pass':r.returncode==0}
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--project-root',required=True)
+    ap.add_argument('--template-root',required=True)
+    ap.add_argument('--task-manager-model')
+    ap.add_argument('--builder-model',required=True)
+    ap.add_argument('--backend',choices=['opencode','codex'],default='opencode')
+    ap.add_argument('--external-evidence',help='JSON captured by a trusted ordinary macOS Terminal')
+    ap.add_argument('--evidence-context',choices=['auto','sandbox','trusted-terminal'],default='auto')
+    a=ap.parse_args(); require_macos()
+    template=os.path.abspath(a.template_root); project=os.path.abspath(a.project_root)
+    here=os.path.dirname(__file__)
+    neg=[sys.executable,'-S',os.path.join(here,'permission-canary'),'--project-root',project,
+         '--template-root',template]
+    if a.task_manager_model: neg += ['--task-manager-model',a.task_manager_model]
+    runtime_cmd=[sys.executable,'-S',os.path.join(here,'runtime-health-check'),'--evidence-context',a.evidence_context]
+    if a.external_evidence: runtime_cmd += ['--external-evidence',a.external_evidence]
+    steps=[
+      run_step('runtime-health',runtime_cmd,90),
+      run_step('all-active-governance-tests',[sys.executable,'-S',os.path.join(template,'tests','governance','run-all')],360),
+      run_step('negative-canary',neg,300),
+      run_step('positive-contract',[sys.executable,'-S',os.path.join(here,'positive-contract'),
+                                   '--project-root',project,'--template-root',template,
+                                   '--builder-model',a.builder_model,'--backend',a.backend],300),
+      run_step('full-cross-project-loop',[sys.executable,'-S',os.path.join(template,'tests','governance','test-full-cross-project-learning-loop')],180)
+    ]
+    ok=all(x['pass'] for x in steps)
+    out={'runtime_id':'MAC_RUNTIME_V1','migration_audit':'PASS' if ok else 'FAIL',
+         'steps':steps,'audited_at':datetime.now(timezone.utc).isoformat()}
+    audit_state={
+      'runtime_id':'MAC_RUNTIME_V1',
+      'status':'VERIFIED' if ok else 'IMPLEMENTED_UNVERIFIED',
+      'verified_at':out['audited_at'] if ok else None,
+      'negative_canary':'PASS' if steps[2]['pass'] else 'FAIL',
+      'positive_contract':'PASS' if steps[3]['pass'] else 'FAIL',
+      'full_cross_project_learning_loop':'PASS' if steps[4]['pass'] else 'FAIL',
+      'migration_audit':'PASS' if ok else 'FAIL'
+    }
+    # The audited project owns its runtime evidence. Keep the shared template
+    # receipt current as a machine-wide capability view, but never leave a
+    # passing project with an unverified local receipt.
+    for health in {
+        os.path.join(project,'docs','runtime','macos-runtime-health.json'),
+        os.path.join(template,'docs','runtime','macos-runtime-health.json')
+    }:
+        state=json.load(open(health,encoding='utf-8')) if os.path.exists(health) else {}
+        state.update(audit_state)
+        with open(health,'w',encoding='utf-8') as f:
+            json.dump(state,f,ensure_ascii=False,indent=2); f.write('\n')
+    print(json.dumps(out,ensure_ascii=False,indent=2))
+    return 0 if ok else 7
+
+if __name__=='__main__':
+    raise SystemExit(main())

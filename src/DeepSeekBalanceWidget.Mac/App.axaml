@@ -1,0 +1,70 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="DeepSeekBalanceWidget.App"
+             RequestedThemeVariant="Dark">
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="TransparentBrush" Color="Transparent" />
+          <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F5F6F8" />
+          <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="CardBackgroundBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="ControlBrush" Color="#F0F2F5" />
+          <SolidColorBrush x:Key="BorderBrush" Color="#D9DEE7" />
+          <SolidColorBrush x:Key="BorderStrongBrush" Color="#B8C2D0" />
+          <SolidColorBrush x:Key="DividerBrush" Color="#E5E9F0" />
+          <SolidColorBrush x:Key="TextMainBrush" Color="#1F2937" />
+          <SolidColorBrush x:Key="TextStrongBrush" Color="#111827" />
+          <SolidColorBrush x:Key="TextHeadingBrush" Color="#243B53" />
+          <SolidColorBrush x:Key="TextAccentBrush" Color="#315B85" />
+          <SolidColorBrush x:Key="TextSecondBrush" Color="#52606D" />
+          <SolidColorBrush x:Key="TextTertiaryBrush" Color="#66788A" />
+          <SolidColorBrush x:Key="TextDimBrush" Color="#778899" />
+          <SolidColorBrush x:Key="SuccessBrush" Color="#258A4A" />
+          <SolidColorBrush x:Key="CapsuleTrackBrush" Color="#26000000" />
+          <SolidColorBrush x:Key="CapsuleSuccessBrush" Color="#258A4A" />
+          <SolidColorBrush x:Key="PeakSuccessBrush" Color="#258A4A" />
+          <SolidColorBrush x:Key="WarningBrush" Color="#B45309" />
+          <SolidColorBrush x:Key="ErrorBrush" Color="#B42318" />
+          <SolidColorBrush x:Key="PeakWarningBrush" Color="#B42318" />
+          <SolidColorBrush x:Key="NavSelectedBrush" Color="#DCEBFA" />
+          <SolidColorBrush x:Key="PrimaryLightBrush" Color="#1264A3" />
+          <SolidColorBrush x:Key="PrimaryBrush" Color="#1677FF" />
+          <SolidColorBrush x:Key="PrimaryTextBrush" Color="#FFFFFF" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="TransparentBrush" Color="Transparent" />
+          <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#171B22" />
+          <SolidColorBrush x:Key="SurfaceBrush" Color="#202631" />
+          <SolidColorBrush x:Key="CardBackgroundBrush" Color="#202631" />
+          <SolidColorBrush x:Key="ControlBrush" Color="#293241" />
+          <SolidColorBrush x:Key="BorderBrush" Color="#3B4658" />
+          <SolidColorBrush x:Key="BorderStrongBrush" Color="#46546A" />
+          <SolidColorBrush x:Key="DividerBrush" Color="#344052" />
+          <SolidColorBrush x:Key="TextMainBrush" Color="#E8F4FF" />
+          <SolidColorBrush x:Key="TextStrongBrush" Color="#F0F7FF" />
+          <SolidColorBrush x:Key="TextHeadingBrush" Color="#DDEBFF" />
+          <SolidColorBrush x:Key="TextAccentBrush" Color="#BFDFFF" />
+          <SolidColorBrush x:Key="TextSecondBrush" Color="#BBC5D1" />
+          <SolidColorBrush x:Key="TextTertiaryBrush" Color="#9DA9B8" />
+          <SolidColorBrush x:Key="TextDimBrush" Color="#8F99A6" />
+          <SolidColorBrush x:Key="SuccessBrush" Color="#4CC94C" />
+          <SolidColorBrush x:Key="CapsuleTrackBrush" Color="#22FFFFFF" />
+          <SolidColorBrush x:Key="CapsuleSuccessBrush" Color="#78D79A" />
+          <SolidColorBrush x:Key="PeakSuccessBrush" Color="#78D79A" />
+          <SolidColorBrush x:Key="WarningBrush" Color="#FFB347" />
+          <SolidColorBrush x:Key="ErrorBrush" Color="#E86656" />
+          <SolidColorBrush x:Key="PeakWarningBrush" Color="#F27D72" />
+          <SolidColorBrush x:Key="NavSelectedBrush" Color="#314867" />
+          <SolidColorBrush x:Key="PrimaryLightBrush" Color="#8ED0FF" />
+          <SolidColorBrush x:Key="PrimaryBrush" Color="#2777B8" />
+          <SolidColorBrush x:Key="PrimaryTextBrush" Color="#FFFFFF" />
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+  <Application.Styles>
+    <FluentTheme />
+  </Application.Styles>
+</Application>

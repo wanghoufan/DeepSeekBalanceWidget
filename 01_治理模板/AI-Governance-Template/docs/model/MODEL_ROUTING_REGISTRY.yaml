@@ -1,0 +1,131 @@
+schema_version: 2.3.1
+authoritative: true
+source_of_truth: docs/model/MODEL_ROUTING_REGISTRY.yaml
+go_policy:
+  scheme: B
+  default: DENY_NON_TASK_MANAGER
+  task_manager_pool: OPENCODE_GO
+  override:
+    required:
+    - trusted_user_approval_receipt
+    - specific_task_id
+    - specific_dispatch_id
+    - one_shot
+    auto_revert: DENY_AFTER_USE
+    task_manager_may_issue_receipt: false
+resource_pools:
+  OPENCODE_GO:
+    purpose: CONTROL_PLANE_RESERVE
+    default_roles:
+    - task-manager
+    external_maintenance_allowed: false
+  OPENCODE_FREE:
+    purpose: LOW_COST_EXECUTION
+    policy: FREE_FIRST_WHEN_CAPABILITY_AND_QUALIFICATION_ARE_SUFFICIENT
+  GPT_PRO:
+    purpose: PROFESSIONAL_EXECUTION
+    accounts: 2
+    policy: USE_APPROVED_PRODUCTION_MODELS_WITHOUT_CONSUMING_CONTROL_PLANE_GO
+role_pool_policy:
+  task-manager:
+    allowed_pools:
+    - OPENCODE_GO
+    required_capabilities:
+    - vision
+    - long_context
+    - tool_calling
+    - orchestration
+  planner:
+    allowed_pools:
+    - OPENCODE_FREE
+    - GPT_PRO
+  builder:
+    allowed_pools:
+    - OPENCODE_FREE
+    - GPT_PRO
+  code-reviewer:
+    allowed_pools:
+    - OPENCODE_FREE
+    - GPT_PRO
+  qa:
+    allowed_pools:
+    - OPENCODE_FREE
+    - GPT_PRO
+  product-reviewer:
+    allowed_pools:
+    - OPENCODE_FREE
+    - GPT_PRO
+  experience-recorder:
+    allowed_pools:
+    - OPENCODE_FREE
+    - GPT_PRO
+  neat-freak:
+    allowed_pools:
+    - OPENCODE_FREE
+    - GPT_PRO
+current_production_mappings:
+  task-manager:
+    model_ref: opencode-go/mimo-v2.5
+    note: Current mapping from governance baseline; runtime launch still requires
+      VERIFIED launch contract.
+  senior-expert:
+    model_ref: codex/gpt-5.6-sol
+    role: backend_not_ninth_role
+    note: High-difficulty coding/root-cause/second-opinion backend.
+models:
+- model_ref: opencode-go/mimo-v2.5
+  display_name: MiMo V2.5 Go
+  provider: OpenCode Go
+  model_id: mimo-v2.5
+  resource_pool: OPENCODE_GO
+  status: PRODUCTION
+  role_fit:
+  - task-manager
+  forbidden_roles: []
+  capabilities_required_by_mapping:
+  - vision
+  - long_context
+  - tool_calling
+  last_verified: null
+  quota_rate_limit_notes: Maintained by External Desktop Maintenance Plane from verified
+    sources.
+  known_issues: []
+- model_ref: codex/gpt-5.6-sol
+  display_name: GPT-5.6 Sol
+  provider: Codex / GPT Pro
+  model_id: gpt-5.6-sol
+  resource_pool: GPT_PRO
+  status: PRODUCTION
+  role_fit:
+  - senior-expert
+  - builder-escalation
+  - investigation-escalation
+  - review-escalation
+  forbidden_roles:
+  - task-manager-default
+  - routine-qa
+  last_verified: null
+  known_issues: []
+- model_ref: gpt-pro/terra-candidate
+  display_name: GPT-5.6 Terra
+  provider: GPT Pro
+  model_id: null
+  resource_pool: GPT_PRO
+  status: CANDIDATE
+  role_fit:
+  - builder-candidate
+  last_verified: null
+  known_issues:
+  - Exact production mapping/model id requires qualification and current provider
+    verification.
+- model_ref: gpt-pro/luna-candidate
+  display_name: GPT-5.6 Luna
+  provider: GPT Pro
+  model_id: null
+  resource_pool: GPT_PRO
+  status: CANDIDATE
+  role_fit:
+  - qa-candidate
+  last_verified: null
+  known_issues:
+  - Do not promote based on name/benchmark alone; run qualification first.

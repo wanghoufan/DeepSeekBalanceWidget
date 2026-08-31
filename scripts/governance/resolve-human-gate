@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""
+resolve-human-gate｜V2.3.1 FAIL-CLOSED TEMPLATE
+
+Must accept only valid scoped unexpired unused one-shot Trusted User Approval Receipt; self-resolve/replay is DENY.
+
+This template intentionally DOES NOT perform production actions.
+Implement the local trusted adapter, run Contract Tests / Negative Canary,
+then update the authoritative registries. Until then it must fail closed.
+"""
+import sys
+print("BLOCKED: resolve-human-gate is an UNVERIFIED V2.3.1 interface template. Implement and contract-test the local adapter before production use.", file=sys.stderr)
+sys.exit(78)

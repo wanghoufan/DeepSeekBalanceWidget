@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+import json,os,shutil,subprocess,sys,tempfile
+BASE=os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..'))
+with tempfile.TemporaryDirectory() as d:
+    os.makedirs(os.path.join(d,'docs','learning'),exist_ok=True)
+    os.makedirs(os.path.join(d,'docs','runtime'),exist_ok=True)
+    reg={'patterns':{
+      'NEW_PATTERN_A':{'canonical_id':'NEW_PATTERN_A','aliases':['A1'],'category':'TEMPLATE','status':'NEW_PATTERN_CANDIDATE','occurrences':1,'candidate_tokens':['alpha','cache']},
+      'NEW_PATTERN_B':{'canonical_id':'NEW_PATTERN_B','aliases':['B1'],'category':'TEMPLATE','status':'NEW_PATTERN_CANDIDATE','occurrences':2,'candidate_tokens':['beta','resume']}
+    }}
+    json.dump(reg,open(os.path.join(d,'docs','learning','LEARNING_PATTERN_REGISTRY.yaml'),'w'))
+    open(os.path.join(d,'docs','learning','PATTERN_MERGE_REQUESTS.jsonl'),'w').close()
+    with open(os.path.join(d,'docs','runtime','TRUSTED_DISPATCH_IDENTITY.jsonl'),'w') as f:
+        f.write(json.dumps({'dispatch_id':'DER','worker_id':'WER','task_id':'T','actual_role':'experience-recorder'})+'\n')
+    req=os.path.join(BASE,'scripts','governance','request-pattern-merge')
+    rr=subprocess.run([sys.executable,'-S',req,'--repo-root',d,'--dispatch-id','DER',
+                       '--source-pattern-id','NEW_PATTERN_A','--target-pattern-id','NEW_PATTERN_B','--reason','same root cause after review'],
+                      text=True,capture_output=True)
+    assert rr.returncode==0,rr.stderr
+    rid=json.loads(rr.stdout)['merge_request_id']
+    gw=os.path.join(BASE,'scripts','governance','pattern-merge-gateway')
+    r=subprocess.run([sys.executable,'-S',gw,'--repo-root',d,'--dispatch-id','DER','--merge-request-id',rid],
+                     text=True,capture_output=True)
+    assert r.returncode==0,r.stderr
+    out=json.load(open(os.path.join(d,'docs','learning','LEARNING_PATTERN_REGISTRY.yaml')))
+    assert out['patterns']['NEW_PATTERN_A']['status']=='MERGED'
+    assert out['patterns']['NEW_PATTERN_A']['merged_into']=='NEW_PATTERN_B'
+    assert out['patterns']['NEW_PATTERN_B']['occurrences']==3
+print('PASS test-pattern-merge-gateway')

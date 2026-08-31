@@ -1,0 +1,28 @@
+#!/usr/bin/env python3
+"""
+FAIL-CLOSED production adapter contract.
+
+The real ORCA Dispatch Gateway implementation MUST execute:
+
+Stage/Scope
+→ Model/Resource/Go Guards
+→ Permission/Delegation
+→ Launch Registry/Freshness
+→ Runtime Health/Isolation
+→ resolve-skills
+→ selected_skill_ids + loaded skill content
+→ ORCA Run / Task / NEW Dispatch
+→ trusted Dispatch metadata including loaded_skill_ids
+→ fresh VERIFIED Launcher
+→ Worker
+→ record-skill-usage after actual load
+→ record-skill-effectiveness after real outcome/evaluation
+
+Task Manager may call Dispatch Gateway only.
+It may not raw launch, alter SKILL_REGISTRY, or fabricate loaded_skill_ids.
+
+This template remains Fail Closed until the user's real ORCA adapter passes Contract Tests.
+"""
+import sys
+print("BLOCKED: dispatch-worker real ORCA adapter is UNVERIFIED.",file=sys.stderr)
+sys.exit(78)

@@ -1,0 +1,53 @@
+{
+  "schema_version": "2.3.1-mac-first",
+  "authoritative": true,
+  "source_of_truth": "docs/runtime/WORKER_LAUNCH_REGISTRY.yaml",
+  "policy": {
+    "production_requires_status": "VERIFIED",
+    "stale_is_production_eligible": false,
+    "task_manager_may_modify": false,
+    "task_manager_may_raw_launch": false,
+    "first_runtime": "macOS",
+    "windows_wsl": "DEFERRED_UNTIL_MAC_VERIFIED"
+  },
+  "profiles": {
+    "mac_opencode": {
+      "backend": "opencode",
+      "runtime_id": "MAC_RUNTIME_V1",
+      "launcher": "scripts/runtime/macos/launch-opencode",
+      "dispatch_gateway": "scripts/runtime/macos/dispatch-worker",
+      "cli_version": "1.18.25",
+      "permission_profile_version": "DETECT_FROM_INSTALLED_VERSION",
+      "verified_at": "2026-08-29T04:34:05.925558+00:00",
+      "status": "VERIFIED",
+      "capability_detection": "opencode run --help",
+      "reacquire_terminal_handle_after_launch": true,
+      "direct_inject_support": "UNSUPPORTED_CURRENTLY",
+      "dispatch_mode": "TRACKED_DISPATCH_THEN_TERMINAL_DELIVERY",
+      "completion_signal": "DISPATCH_RESULT_COMPLETE_AND_TERMINAL_IDLE",
+      "skill_usage_evidence": "trusted_dispatch.loaded_skill_ids + used_skill_ids"
+    },
+    "mac_codex": {
+      "backend": "codex",
+      "runtime_id": "MAC_RUNTIME_V1",
+      "launcher": "scripts/runtime/macos/launch-codex",
+      "dispatch_gateway": "scripts/runtime/macos/dispatch-worker",
+      "cli_version": null,
+      "verified_at": null,
+      "status": "UNVERIFIED",
+      "required_explicit_flags": [
+        "--sandbox",
+        "--ask-for-approval"
+      ],
+      "banned_flags": [
+        "--full-auto",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--yolo",
+        "--approve-for-me",
+        "--not-so-yolo",
+        "--dangerously-bypass-hook-trust"
+      ],
+      "completion_signal": "ORCA_WORKER_DONE"
+    }
+  }
+}

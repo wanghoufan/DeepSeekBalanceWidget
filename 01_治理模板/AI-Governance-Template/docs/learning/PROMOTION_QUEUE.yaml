@@ -1,0 +1,6 @@
+{
+  "schema_version": "2.3.1",
+  "authoritative": true,
+  "format_note": "JSON-compatible YAML for dependency-free tooling",
+  "items": []
+}

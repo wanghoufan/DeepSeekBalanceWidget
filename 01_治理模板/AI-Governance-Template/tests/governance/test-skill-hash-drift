@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+import hashlib,json,os,shutil,subprocess,sys,tempfile
+from _testlib import trusted_template_sync
+BASE=os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..'))
+def h(p): return hashlib.sha256(open(p,'rb').read()).hexdigest()
+
+with tempfile.TemporaryDirectory() as d:
+    tr=os.path.join(d,'template'); pr=os.path.join(d,'project')
+    shutil.copytree(BASE,tr,ignore=shutil.ignore_patterns('__pycache__','*.pyc','*.lock'))
+    skill_rel='skills/drift/SKILL.md'
+    sp=os.path.join(tr,skill_rel); os.makedirs(os.path.dirname(sp),exist_ok=True)
+    open(sp,'w').write('# stable skill\n')
+    regp=os.path.join(tr,'docs','learning','SKILL_REGISTRY.yaml')
+    reg=json.load(open(regp))
+    reg['skills']=[{
+      'skill_id':'DRIFT_SKILL','status':'PRODUCTION','lifecycle_status':'INCLUDED_IN_TEMPLATE',
+      'path':skill_rel,'trigger':['drift_test'],'task_types':['QA'],'applicable_roles':['qa'],
+      'required_capabilities':['read'],'required_tools':['read'],'write_scope':'NONE','shell_scope':'NONE',
+      'network_scope':'NONE','computer_use':False,'destructive':False,'risk_level':'LOW',
+      'validated_receipt_id':'VAL-X','validated_content_hash':h(sp),
+      'source_project_id':'SOURCE','source_learning_event_id':'E','first_promoted_at':'now',
+      'first_reused_project_id':None,'template_version':'x','last_validated':'now'
+    }]
+    json.dump(reg,open(regp,'w'),indent=2)
+    trusted_template_sync(tr,initialize=True,delivery_version='TEST')
+
+    BS=os.path.join(tr,'scripts','governance','bootstrap-project')
+    subprocess.run([sys.executable,'-S',BS,'--template-root',tr,'--project-root',pr,'--project-id','P','--repo-id','R'],
+                   check=True,capture_output=True,text=True,timeout=30)
+
+    RS=os.path.join(pr,'scripts','workers','resolve-skills')
+    ok=subprocess.run([sys.executable,'-S',RS,'--project-root',pr,'--role','qa','--task-type','QA',
+                       '--triggers','drift_test','--capabilities','read'],capture_output=True,text=True)
+    assert ok.returncode==0,ok.stderr
+
+    open(os.path.join(pr,skill_rel),'w').write('# silently changed\n')
+    bad=subprocess.run([sys.executable,'-S',RS,'--project-root',pr,'--role','qa','--task-type','QA',
+                        '--triggers','drift_test','--capabilities','read'],capture_output=True,text=True)
+    assert bad.returncode!=0 and 'SKILL_DRIFT' in bad.stdout
+
+print('PASS test-skill-hash-drift')

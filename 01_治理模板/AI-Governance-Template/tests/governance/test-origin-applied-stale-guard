@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+import json, os, shutil, subprocess, sys, tempfile, hashlib
+from _testlib import trusted_template_sync
+BASE=os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..'))
+
+def hh(p):
+    return hashlib.sha256(open(p,'rb').read()).hexdigest()
+
+with tempfile.TemporaryDirectory() as d:
+    tr=os.path.join(d,'template'); pr=os.path.join(d,'project')
+    shutil.copytree(BASE,tr,ignore=shutil.ignore_patterns('__pycache__','*.pyc','*.lock'))
+    TS=os.path.join(tr,'scripts','governance','template-sync')
+    BS=os.path.join(tr,'scripts','governance','bootstrap-project')
+    SG=os.path.join(tr,'scripts','governance','stale-template-guard')
+
+    trusted_template_sync(tr,initialize=True,delivery_version='TEST',script_path=TS)
+    subprocess.run([sys.executable,'-S',BS,'--template-root',tr,'--project-root',pr,'--project-id','P','--repo-id','R'],
+                   check=True,capture_output=True,text=True,timeout=30)
+
+    gd=os.path.join(pr,'docs','governance')
+    origin_path=os.path.join(gd,'PROJECT_GOVERNANCE_ORIGIN.yaml')
+    applied_path=os.path.join(gd,'PROJECT_GOVERNANCE_APPLIED.yaml')
+    snapshot_path=os.path.join(gd,'PROJECT_GOVERNANCE_APPLIED_MANIFEST.json')
+    origin_before=open(origin_path,'rb').read()
+
+    current=subprocess.run([sys.executable,'-S',SG,'--project-root',pr,'--template-root',tr],
+                           capture_output=True,text=True,timeout=15)
+    assert current.returncode==0,current.stdout+current.stderr
+
+    # Global Template changes independently -> Project Applied is stale.
+    open(os.path.join(tr,'new-governance.md'),'w').write('change')
+    trusted_template_sync(tr,promotion_id='P-X',delivery_version='TEST',script_path=TS)
+    stale=subprocess.run([sys.executable,'-S',SG,'--project-root',pr,'--template-root',tr],
+                         capture_output=True,text=True,timeout=15)
+    assert stale.returncode!=0 and 'STALE_TEMPLATE' in stale.stdout
+    assert open(origin_path,'rb').read()==origin_before
+
+    # A trusted sync/promotion updates Applied + its manifest snapshot, never Origin.
+    tmp_manifest=os.path.join(tr,'docs','governance','TEMPLATE_MANIFEST.json')
+    m=json.load(open(tmp_manifest))
+    v=json.load(open(os.path.join(tr,'docs','governance','TEMPLATE_VERSION.yaml')))
+    applied=json.load(open(applied_path))
+    applied['current_applied_template_version']=v['template_version']
+    applied['current_applied_manifest_hash']=hh(tmp_manifest)
+    applied['current_applied_fingerprint']=m['template_fingerprint']
+    applied['last_promotion_id']='P-X'
+    with open(applied_path,'w') as f:
+        json.dump(applied,f,indent=2)
+    shutil.copy2(tmp_manifest,snapshot_path)
+
+    current2=subprocess.run([sys.executable,'-S',SG,'--project-root',pr,'--template-root',tr],
+                            capture_output=True,text=True,timeout=15)
+    assert current2.returncode==0,current2.stdout+current2.stderr
+    assert open(origin_path,'rb').read()==origin_before
+
+print('PASS test-origin-applied-stale-guard')

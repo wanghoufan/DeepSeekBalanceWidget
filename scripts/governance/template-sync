@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+"""
+INTERNAL-ONLY shared Governance Template Version/Manifest writer.
+
+Promotion Gateway owns the broad transaction lock and calls this helper with
+a scoped one-shot capability. Other trusted maintenance callers may call it
+with a capability and let this helper acquire the Template Promotion Lock.
+Direct Agent invocation is denied.
+"""
+import argparse, base64, hashlib, hmac, json, os, re, subprocess, sys
+from datetime import datetime, timezone
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lock_utils import FileLock, atomic_write_json
+from internal_capability import verify_and_consume
+
+EXCLUDED={
+ 'docs/governance/TEMPLATE_MANIFEST.json',
+ 'docs/governance/PROJECT_GOVERNANCE_ORIGIN.template.yaml',
+ 'docs/governance/PROJECT_GOVERNANCE_APPLIED.template.yaml',
+ # Machine-local evidence is intentionally mutable.  Tracking it makes a
+ # health check invalidate the source template it is supposed to inspect.
+ 'docs/runtime/macos-runtime-health.json'
+ , 'docs/governance/BOOTSTRAP_HISTORY.jsonl'
+}
+
+def h(path):
+    x=hashlib.sha256()
+    with open(path,'rb') as f:
+        for c in iter(lambda:f.read(65536),b''): x.update(c)
+    return x.hexdigest()
+
+def bump(v):
+    m=re.fullmatch(r'(.+-template\.)(\d+)',str(v))
+    if not m: raise ValueError('unsupported template version '+str(v))
+    return m.group(1)+str(int(m.group(2))+1)
+
+def build_manifest(root,version):
+    files=[]
+    for dp,dirs,fns in os.walk(root):
+        dirs[:]=[d for d in dirs if d!='__pycache__']
+        for fn in sorted(fns):
+            p=os.path.join(dp,fn); rel=os.path.relpath(p,root).replace('\\','/')
+            if rel in EXCLUDED or fn.endswith('.lock') or fn.endswith('.pyc') or '.tmp.' in fn:
+                continue
+            files.append({'path':rel,'size':os.path.getsize(p),'sha256':h(p)})
+    files=sorted(files,key=lambda x:x['path'])
+    canonical=json.dumps(files,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()
+    fingerprint=hashlib.sha256(canonical).hexdigest()
+    return {
+      'schema_version':'4','authoritative':True,'template_version':version,
+      'generated_at':datetime.now(timezone.utc).isoformat(),
+      'fingerprint_algorithm':'sha256(sorted path,size,sha256)',
+      'template_fingerprint':fingerprint,
+      'excluded_from_fingerprint':sorted(EXCLUDED),
+      'files':files
+    }
+
+def perform(root,promotion_id,initialize,delivery_version):
+    gp=os.path.join(root,'docs','governance')
+    vp=os.path.join(gp,'TEMPLATE_VERSION.yaml'); mp=os.path.join(gp,'TEMPLATE_MANIFEST.json')
+    with FileLock(os.path.join(gp,'.template-sync.lock'),'template-sync',timeout=10,stale_after=30):
+        v=json.load(open(vp,encoding='utf-8'))
+        if not initialize:
+            v['template_version']=bump(v['template_version'])
+        if delivery_version:
+            v['delivery_version']=delivery_version
+        v['last_promotion_id']=promotion_id
+        v['updated_at']=datetime.now(timezone.utc).isoformat()
+        atomic_write_json(vp,v)
+        m=build_manifest(root,v['template_version'])
+        atomic_write_json(mp,m)
+    return {
+      'template_version':v['template_version'],
+      'delivery_version':v.get('delivery_version'),
+      'last_promotion_id':v.get('last_promotion_id'),
+      'template_fingerprint':m['template_fingerprint'],
+      'template_manifest_hash':h(mp)
+    }
+
+def bootstrap_payload(rec):
+    return {k:v for k,v in rec.items() if k!='mac'}
+
+def verify_bootstrap_receipt(root,path):
+    secret=os.environ.get('ORCA_BOOTSTRAP_SECRET','')
+    if len(secret)<32: raise SystemExit('DENY: bootstrap authority secret unavailable')
+    rec=json.load(open(path,encoding='utf-8'))
+    mac=rec.pop('mac',None)
+    if not mac: raise SystemExit('DENY: bootstrap authority MAC missing')
+    expected=base64.urlsafe_b64encode(hmac.new(secret.encode(),json.dumps(bootstrap_payload(rec),ensure_ascii=False,sort_keys=True,separators=(',',':')).encode(),hashlib.sha256).digest()).decode().rstrip('=')
+    if not hmac.compare_digest(mac,expected): raise SystemExit('DENY: bootstrap authority MAC invalid')
+    required=['bootstrap_id','bootstrap_type','source_template_version','source_manifest_hash','source_fingerprint',
+              'exact_file_set','pre_change_file_hashes','post_change_file_hashes','bootstrap_bundle_hash',
+              'ephemeral_executor_sha256','staging_validation_result','trusted_user_approval','one_shot','nonce']
+    missing=[k for k in required if k not in rec]
+    if missing: raise SystemExit('DENY: bootstrap authority binding missing '+','.join(missing))
+    if rec.get('one_shot') is not True or rec.get('trusted_user_approval') is not True: raise SystemExit('DENY: invalid bootstrap authority state')
+    v=json.load(open(os.path.join(root,'docs','governance','TEMPLATE_VERSION.yaml'),encoding='utf-8'))
+    m=json.load(open(os.path.join(root,'docs','governance','TEMPLATE_MANIFEST.json'),encoding='utf-8'))
+    if rec['source_template_version']!=v.get('template_version'): raise SystemExit('DENY: bootstrap source version mismatch')
+    if rec['source_manifest_hash']!=h(os.path.join(root,'docs','governance','TEMPLATE_MANIFEST.json')): raise SystemExit('DENY: bootstrap source manifest mismatch')
+    if rec['source_fingerprint']!=m.get('template_fingerprint'): raise SystemExit('DENY: bootstrap source fingerprint mismatch')
+    if rec['source_template_version']!='2.3.1-template.24': raise SystemExit('DENY: bootstrap source must be template.24')
+    hist=os.path.join(root,'docs','governance','BOOTSTRAP_HISTORY.jsonl')
+    if os.path.exists(hist) and any(json.loads(x).get('bootstrap_id')==rec['bootstrap_id'] and json.loads(x).get('record_type')=='BOOTSTRAP_CONSUMED' for x in open(hist,encoding='utf-8') if x.strip()):
+        raise SystemExit('DENY: bootstrap authority replay')
+    post=rec['post_change_file_hashes']; files=rec['exact_file_set']
+    if sorted(post)!=sorted(files): raise SystemExit('DENY: bootstrap file set/hash binding mismatch')
+    for rel,expected_hash in post.items():
+        p=os.path.join(root,rel)
+        if not os.path.isfile(p) or h(p)!=expected_hash: raise SystemExit('DENY: bootstrap post-image mismatch: '+rel)
+    bundle=hashlib.sha256(json.dumps(sorted(post.items()),ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
+    if bundle!=rec['bootstrap_bundle_hash']: raise SystemExit('DENY: bootstrap bundle hash mismatch')
+    return rec
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--template-root',required=True)
+    ap.add_argument('--promotion-id')
+    ap.add_argument('--initialize',action='store_true')
+    ap.add_argument('--delivery-version')
+    ap.add_argument('--caller-holds-template-lock',action='store_true')
+    ap.add_argument('--internal-token')
+    ap.add_argument('--bootstrap-authority-receipt')
+    a=ap.parse_args()
+    root=os.path.abspath(a.template_root)
+
+    if a.bootstrap_authority_receipt:
+        rec=verify_bootstrap_receipt(root,a.bootstrap_authority_receipt)
+        out=perform(root,rec['bootstrap_id'],False,None)
+        print(json.dumps({**out,'bootstrap_id':rec['bootstrap_id'],'bootstrap_authority':'OUT_OF_BAND','consumed':True},ensure_ascii=False))
+        raise SystemExit(0)
+    if not a.internal_token: raise SystemExit('DENY: internal capability required')
+    claims={
+      'template_root':root,
+      'promotion_id':a.promotion_id,
+      'initialize':bool(a.initialize),
+      'caller_holds_template_lock':bool(a.caller_holds_template_lock),
+      'delivery_version':a.delivery_version
+    }
+    try:
+        verify_and_consume(root,a.internal_token,'TEMPLATE_SYNC',claims)
+    except Exception as e:
+        raise SystemExit('DENY: internal template-sync capability invalid: '+str(e))
+
+    if a.caller_holds_template_lock:
+        out=perform(root,a.promotion_id,a.initialize,a.delivery_version)
+    else:
+        lock=os.path.join(root,'docs','governance','.template-promotion.lock')
+        with FileLock(lock,'template-sync-transaction',timeout=20,stale_after=60):
+            out=perform(root,a.promotion_id,a.initialize,a.delivery_version)
+    print(json.dumps(out,ensure_ascii=False))
+
+if __name__=='__main__':
+    main()

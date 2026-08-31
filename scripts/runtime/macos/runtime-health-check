@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+import argparse, json, os, re, stat, subprocess, sys
+from datetime import datetime, timezone
+sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
+from common import require_macos,which,run,load_config,repo_root_from_here
+
+def version(cmd):
+    for args in ([cmd,'--version'],[cmd,'version']):
+        try:
+            out=run(args,timeout=10)
+            return out.strip().splitlines()[0][:200]
+        except Exception:
+            pass
+    return None
+
+def help_output(argv):
+    """CLI help may deliberately render to stderr even on a zero exit."""
+    r=subprocess.run(argv,text=True,capture_output=True,timeout=10)
+    if r.returncode!=0:
+        raise RuntimeError(f'command failed {argv!r}: {r.stderr.strip() or r.stdout.strip()}')
+    return r.stdout+r.stderr
+
+def _result_payload(value):
+    """Unwrap the stable Orca CLI envelope without trusting its request id."""
+    if isinstance(value,dict) and isinstance(value.get('result'),dict):
+        return value['result']
+    return value if isinstance(value,dict) else {}
+
+def _runtime_snapshot(status_obj):
+    payload=_result_payload(status_obj)
+    app=payload.get('app') or {}
+    runtime=payload.get('runtime') or {}
+    return {
+      'app_running':app.get('running') is True,
+      'runtime_state':runtime.get('state'),
+      'runtime_reachable':runtime.get('reachable') is True,
+      'runtime_id':runtime.get('runtimeId')
+    }
+
+def _terminal_list_pass(terminal_obj):
+    if not isinstance(terminal_obj,dict): return False
+    if terminal_obj.get('ok') is True:
+        return True
+    payload=_result_payload(terminal_obj)
+    return isinstance(payload,dict) and payload.get('terminals') is not None and terminal_obj.get('error') is None
+
+def classify_runtime_observation(status_obj, terminal_obj, context='auto'):
+    """Classify only Runtime Health; never creates QA or approval identities."""
+    snap=_runtime_snapshot(status_obj)
+    healthy=(snap['app_running'] and snap['runtime_state']=='ready' and
+             snap['runtime_reachable'] and bool(snap['runtime_id']) and
+             _terminal_list_pass(terminal_obj))
+    if healthy:
+        return {'runtime_health':'PASS','evidence_source':'TRUSTED_TERMINAL' if context=='trusted-terminal' else 'LOCAL_CLI',**snap}
+    if context=='trusted-terminal':
+        state='RUNTIME_BLOCKED'
+    else:
+        state='UNRESOLVED_SANDBOX_CONFOUND'
+    return {'runtime_health':state,'evidence_source':'SANDBOX_OR_UNTRUSTED_CLI',**snap}
+
+def validate_external_evidence(path):
+    """Validate a user-captured ordinary Terminal evidence file.
+
+    This evidence is scoped to Runtime Health only. It cannot carry dispatch,
+    worker, validation, or approval identities.
+    """
+    st=os.stat(path)
+    if not stat.S_ISREG(st.st_mode): raise RuntimeError('external evidence must be a regular file')
+    if st.st_uid != os.getuid() or (st.st_mode & 0o022):
+        raise RuntimeError('external evidence ownership/permissions are not trusted')
+    data=json.load(open(path,encoding='utf-8'))
+    if data.get('evidence_source')!='EXTERNAL_TRUSTED_TERMINAL':
+        raise RuntimeError('external evidence source must be EXTERNAL_TRUSTED_TERMINAL')
+    status=data.get('status') or {
+      'app':data.get('app',{}),'runtime':data.get('runtime',{})
+    }
+    terminal=data.get('terminal_list') or data.get('terminal') or {}
+    verdict=classify_runtime_observation(status,terminal,'trusted-terminal')
+    if verdict['runtime_health']!='PASS':
+        raise RuntimeError('external trusted terminal evidence does not show ready/reachable Runtime')
+    forbidden={'dispatch_id','task_id','worker_id','validation_receipt','approval_id','user_approval_receipt'}
+    if forbidden & set(data):
+        raise RuntimeError('external Runtime evidence must not contain governance identities')
+    verdict['evidence_source']='EXTERNAL_TRUSTED_TERMINAL'
+    verdict['evidence_file']=os.path.abspath(path)
+    return verdict
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--external-evidence',help='JSON captured by a trusted ordinary macOS Terminal')
+    ap.add_argument('--evidence-context',choices=['auto','sandbox','trusted-terminal'],default='auto')
+    a=ap.parse_args()
+    root=repo_root_from_here(); cfg=load_config()
+    result={'runtime_id':'MAC_RUNTIME_V1','checked_at':datetime.now(timezone.utc).isoformat(),'status':'UNVERIFIED','runtime_health':'UNRESOLVED_SANDBOX_CONFOUND','evidence_source':'SANDBOX_OR_UNTRUSTED_CLI','checks':{}}
+    try: require_macos(); result['checks']['platform']={'result':'PASS','value':sys.platform}
+    except Exception as e:
+        result['checks']['platform']={'result':'BLOCKED','detail':str(e)}
+        print(json.dumps(result,ensure_ascii=False,indent=2)); return 2
+    try:
+        orca=which(cfg['executables']['orca']); result['checks']['orca_executable']={'result':'PASS','path':orca,'version':version(orca)}
+        st=run([orca,'status','--json'],timeout=15,expect_json=True)
+        tl=run([orca,'terminal','list','--json'],timeout=15,expect_json=True)
+        verdict=classify_runtime_observation(st,tl,a.evidence_context)
+        result.update({k:v for k,v in verdict.items() if k not in {'runtime_health'}})
+        result['runtime_health']=verdict['runtime_health']
+        result['checks']['orca_status']={'result':'PASS' if verdict['runtime_health']=='PASS' else verdict['runtime_health'],'summary':st}
+        result['checks']['orca_terminal_list']={'result':'PASS' if _terminal_list_pass(tl) else verdict['runtime_health'],'summary':tl}
+        guide=run([orca,'skills','get','orchestration','--full'],timeout=20)
+        required=cfg['orchestration']['required_commands']
+        missing=[x for x in required if x not in guide]
+        result['checks']['orca_orchestration_guide']={'result':'PASS' if not missing else 'FAIL','missing':missing}
+    except Exception as e:
+        result['checks']['orca']={'result':'RUNTIME_BLOCKED' if a.evidence_context=='trusted-terminal' else 'UNRESOLVED_SANDBOX_CONFOUND','detail':str(e)}
+        result['runtime_health']='RUNTIME_BLOCKED' if a.evidence_context=='trusted-terminal' else 'UNRESOLVED_SANDBOX_CONFOUND'
+
+    if a.external_evidence:
+        try:
+            external=validate_external_evidence(a.external_evidence)
+            result.update(external)
+            result['checks']['external_trusted_terminal']={'result':'PASS','runtime_id':external.get('runtime_id'),'evidence_file':external.get('evidence_file')}
+        except Exception as e:
+            result['checks']['external_trusted_terminal']={'result':'RUNTIME_BLOCKED','detail':str(e)}
+            result['runtime_health']='RUNTIME_BLOCKED'
+
+    try:
+        oc=which(cfg['executables']['opencode'])
+        # `--auto` is a non-interactive run option in current OpenCode releases,
+        # rather than a top-level CLI option.  Check the command surface that
+        # the runtime adapters actually invoke.
+        helptext=help_output([oc,'run','--help'])
+        result['checks']['opencode']={'result':'PASS' if '--auto' in helptext else 'FAIL','path':oc,'version':version(oc),'auto_flag':'--auto' in helptext,'checked_command':'opencode run --help'}
+    except Exception as e: result['checks']['opencode']={'result':'FAIL','detail':str(e)}
+
+    try:
+        cx=which(cfg['executables']['codex']); helptext=help_output([cx,'--help'])
+        result['checks']['codex']={
+          'result':'PASS' if ('--sandbox' in helptext and '--ask-for-approval' in helptext) else 'FAIL',
+          'path':cx,'version':version(cx),
+          'sandbox_flag':'--sandbox' in helptext,'approval_flag':'--ask-for-approval' in helptext
+        }
+    except Exception as e: result['checks']['codex']={'result':'FAIL','detail':str(e)}
+
+    other_ok=all(v.get('result')=='PASS' for k,v in result['checks'].items() if k not in {'orca_status','orca_terminal_list','orca'})
+    ok=result.get('runtime_health')=='PASS' and other_ok
+    result['status']='HEALTHY_EXTERNAL' if ok and result.get('evidence_source')=='EXTERNAL_TRUSTED_TERMINAL' else ('HEALTHY_UNVERIFIED' if ok else result.get('runtime_health','DEGRADED'))
+    out=os.path.join(root,'docs','runtime','macos-runtime-health.json')
+    with open(out,'w',encoding='utf-8') as f: json.dump(result,f,ensure_ascii=False,indent=2); f.write('\n')
+    print(json.dumps(result,ensure_ascii=False,indent=2))
+    return 0 if ok else 3
+if __name__=='__main__': raise SystemExit(main())

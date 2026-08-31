@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""
+INTERNAL-ONLY trusted Dispatch identity writer for MAC_RUNTIME_V1.
+"""
+import argparse,json,os,sys
+from datetime import datetime,timezone
+sys.path.insert(0,os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..','governance')))
+from internal_capability import verify_and_consume
+from lock_utils import FileLock
+
+def jsonl(p):
+    if not os.path.exists(p): return []
+    return [json.loads(x) for x in open(p,encoding='utf-8') if x.strip()]
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--project-root',required=True)
+    ap.add_argument('--dispatch-id',required=True)
+    ap.add_argument('--task-id',required=True)
+    ap.add_argument('--worker-id')
+    ap.add_argument('--role',required=True)
+    ap.add_argument('--loaded-skill-ids',default='[]')
+    ap.add_argument('--used-skill-ids')
+    ap.add_argument('--internal-token',required=True)
+    a=ap.parse_args()
+    claims={'dispatch_id':a.dispatch_id,'task_id':a.task_id,'role':a.role}
+    try:
+        verify_and_consume(a.project_root,a.internal_token,'WRITE_TRUSTED_DISPATCH_IDENTITY',claims)
+    except Exception as e:
+        raise SystemExit('DENY: trusted identity capability invalid: '+str(e))
+    p=os.path.join(os.path.abspath(a.project_root),'docs','runtime','TRUSTED_DISPATCH_IDENTITY.jsonl')
+    loaded=json.loads(a.loaded_skill_ids)
+    used=json.loads(a.used_skill_ids) if a.used_skill_ids is not None else []
+    rec={
+      'dispatch_id':a.dispatch_id,'task_id':a.task_id,'worker_id':a.worker_id,
+      'actual_role':a.role,'loaded_skill_ids':loaded,'used_skill_ids':used,
+      'runtime_adapter':'MAC_RUNTIME_V1','started_at':datetime.now(timezone.utc).isoformat()
+    }
+    with FileLock(p+'.lock','mac-trusted-dispatch-identity',timeout=5,stale_after=15):
+        # append latest projection; readers use last matching dispatch.
+        with open(p,'a',encoding='utf-8') as f:
+            f.write(json.dumps(rec,ensure_ascii=False,separators=(',',':'))+'\n')
+            f.flush(); os.fsync(f.fileno())
+    print(json.dumps(rec,ensure_ascii=False))
+if __name__=='__main__': main()

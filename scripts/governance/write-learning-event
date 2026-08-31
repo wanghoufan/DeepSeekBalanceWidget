@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+import argparse, json, os, sys, uuid
+from datetime import datetime, timezone
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lock_utils import FileLock
+from learning_pattern_lib import resolve, record_occurrence
+
+TRIGGERS={'USER_CORRECTION','RULE_VIOLATION','REPEATED_FAILURE','MANUAL_WORKAROUND','TOKEN_WASTE','REUSABLE_PATTERN','RUNTIME_INCIDENT','MODEL_FACT'}
+CANDIDATES={'PROJECT_PATCH','GUARD_RULE','SKILL','TEMPLATE','RUNTIME_INCIDENT','MODEL_FACT'}
+IMPACTS={'LOW','MEDIUM','HIGH'}
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--repo-root',default='.')
+    ap.add_argument('--event-json')
+    a=ap.parse_args()
+    root=os.path.abspath(a.repo_root)
+    ledger=os.path.join(root,'docs','learning','LEARNING_EVENTS.jsonl')
+    os.makedirs(os.path.dirname(ledger),exist_ok=True)
+    e=json.loads(a.event_json if a.event_json else sys.stdin.read())
+
+    required=['project_id','stage_id','trigger','symptom','root_cause','current_fix','impact','candidate_type','reusable']
+    missing=[k for k in required if k not in e]
+    if missing: raise SystemExit('missing fields: '+','.join(missing))
+    if e['trigger'] not in TRIGGERS: raise SystemExit('invalid trigger')
+    if e['candidate_type'] not in CANDIDATES: raise SystemExit('invalid candidate_type')
+    if e['impact'] not in IMPACTS: raise SystemExit('invalid impact')
+
+    # Caller may propose an alias/rule key, but cannot decide authoritative recurrence identity.
+    proposal=e.get('learning_pattern_id') or e.get('rule_key')
+    resolved=resolve(
+        root,
+        proposal=proposal,
+        trigger=e.get('trigger'),
+        category=e.get('event_category') or e.get('candidate_type'),
+        symptom=e.get('symptom'),
+        root_cause=e.get('root_cause'),
+        create_candidate=True
+    )
+    canonical=resolved['canonical_pattern_id']
+
+    # Ignore caller recurrence_count by design.
+    e.pop('recurrence_count',None)
+    e.pop('canonical_pattern_id',None)
+
+    # Serialize ledger append; Pattern Registry itself uses its own lock.
+    with FileLock(ledger+'.lock','write-learning-event',timeout=5,stale_after=15):
+        occ=record_occurrence(root,canonical,proposal)
+        e['canonical_pattern_id']=canonical
+        e['learning_pattern_id']=canonical  # compatibility field now always canonical
+        e['pattern_match_type']=resolved['match_type']
+        e['recurrence_count']=occ['recurrence_count']
+        e['current_enforcement']=occ.get('current_enforcement')
+        e['repeated_user_correction']=bool(e['trigger']=='USER_CORRECTION' and e['recurrence_count']>=2)
+        e['event_id']=e.get('event_id') or 'LEARN-'+uuid.uuid4().hex[:12]
+        e['captured_at']=e.get('captured_at') or datetime.now(timezone.utc).isoformat()
+        e['status']='CAPTURED'
+        e.setdefault('task_id',None); e.setdefault('dispatch_id',None)
+        with open(ledger,'a',encoding='utf-8') as f:
+            f.write(json.dumps(e,ensure_ascii=False,separators=(',',':'))+'\n')
+            f.flush(); os.fsync(f.fileno())
+
+    print(json.dumps(e,ensure_ascii=False))
+
+if __name__=='__main__':
+    main()

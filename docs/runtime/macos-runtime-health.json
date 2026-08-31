@@ -1,0 +1,182 @@
+{
+  "runtime_id": "MAC_RUNTIME_V1",
+  "checked_at": "2026-08-30T15:24:58.222889+00:00",
+  "status": "IMPLEMENTED_UNVERIFIED",
+  "runtime_health": "PASS",
+  "evidence_source": "LOCAL_CLI",
+  "checks": {
+    "platform": {
+      "result": "PASS",
+      "value": "darwin"
+    },
+    "orca_executable": {
+      "result": "PASS",
+      "path": "/opt/homebrew/bin/orca",
+      "version": "orca"
+    },
+    "orca_status": {
+      "result": "PASS",
+      "summary": {
+        "id": "local-status",
+        "ok": true,
+        "result": {
+          "target": {
+            "kind": "local"
+          },
+          "app": {
+            "running": true,
+            "pid": 681,
+            "desktopWindowStatus": "available"
+          },
+          "runtime": {
+            "state": "ready",
+            "reachable": true,
+            "runtimeId": "dbbf2488-e947-4af1-b620-598a033829da",
+            "appVersion": "1.4.192",
+            "remoteUpdateSupport": {
+              "installMode": "interactive",
+              "automatic": true,
+              "reason": "available"
+            },
+            "capabilities": [
+              "runtime.status.compat.v1",
+              "runtime.environments.v1",
+              "remote-runtime.shared-control.v1",
+              "orchestration.federation.v1",
+              "orchestration.federation-control-mail.v1",
+              "orchestration.federation-lifecycle-settlement.v1",
+              "orchestration.worker-stop-verdict.v1",
+              "orchestration.worker-launch-preferences.v1",
+              "orchestration.contract.v1",
+              "browser.screencast.v1",
+              "browser.tab-create-known-id.v1",
+              "browser.clientHost.v1",
+              "browser.clientHost.pageMetadata.v1",
+              "browser.clientHost.automation.v1",
+              "browser.clientHost.fileChannel.v1",
+              "network.browserTunnel.v1",
+              "network.browserTunnel.executionHosts.v1",
+              "terminal.binary-stream.v1",
+              "terminal.multiplex.v1",
+              "workspace-ports.v1",
+              "mobile.tasks.v1",
+              "project-host-setup.v1",
+              "task-source-context.v1",
+              "workspace-run-context.v1",
+              "worktree.linked-work-item-context.v1",
+              "folder-workspace.path-status.v1",
+              "linear.issue-attribute-filter.v1",
+              "aiVault.v1",
+              "aiVault.session-titles.v1",
+              "terminal.query-reply-input.v1",
+              "terminal.paired-parking.v1",
+              "terminal.quick-commands.v1",
+              "worktree.create-idempotency.v1",
+              "terminal.create-idempotency.v2",
+              "session-tabs.close-intent.v1",
+              "session-tabs.authoritative-inventory.v1",
+              "agent-session.session-boundary.v1",
+              "updater.remote-control.v1",
+              "agent-session.host-authority.v1",
+              "agent-session.omp-resume-path.v1",
+              "agent-session.kimi-resume.v1",
+              "files.mutation-ownership.v1",
+              "worktree.visibility-defaults.v1",
+              "worktree.visibility-source-defaults.v1",
+              "accounts.import-host-credentials.v1",
+              "accounts.codex-reset-credit.v1",
+              "skills.install.v1",
+              "skills.install.bundle.v1",
+              "skills.install-cancel.v1",
+              "skills.install-progress.v1",
+              "skills.install-result.v2",
+              "skills.upload.v1",
+              "skills.manage.v1",
+              "skills.install-providers.v1",
+              "skills.delete.v1",
+              "automation.list-host-scope.v1",
+              "automation.owner-fencing.v1",
+              "automation.create-idempotency.v1",
+              "browser.certificate-trust.v1"
+            ]
+          },
+          "graph": {
+            "state": "ready"
+          }
+        },
+        "_meta": {
+          "runtimeId": "dbbf2488-e947-4af1-b620-598a033829da"
+        }
+      }
+    },
+    "orca_terminal_list": {
+      "result": "PASS",
+      "summary": {
+        "id": "86c98a3e-2e9c-47d8-b24c-6d30e3340840",
+        "ok": true,
+        "result": {
+          "terminals": [
+            {
+              "handle": "term_e0131072-b992-41ab-af6a-9a8686e5a5b3",
+              "ptyId": "32644ffa-35d4-4337-b838-feaf332a1ee3::/Users/zzymima0000/Developer/coding/1.Active/ing 丨0826DS、GPT桌面额度显示工具 PC workbuddy桌面 V1.0@@8f0fe2f9",
+              "incarnationId": "84872e75-a7e4-45fd-a23a-7a2f0f679e42",
+              "orphaned": false,
+              "worktreeId": "32644ffa-35d4-4337-b838-feaf332a1ee3::/Users/zzymima0000/Developer/coding/1.Active/ing 丨0826DS、GPT桌面额度显示工具 PC workbuddy桌面 V1.0",
+              "worktreePath": "/Users/zzymima0000/Developer/coding/1.Active/ing 丨0826DS、GPT桌面额度显示工具 PC workbuddy桌面 V1.0",
+              "branch": "",
+              "tabId": "c731bc35-caba-4e4e-9b77-a953eff81376",
+              "leafId": "24e3877a-1de5-43d8-86fb-5271822285ec",
+              "title": "OC | Task Manager V2.3.1 工作时段启动配置",
+              "connected": true,
+              "writable": true,
+              "lastOutputAt": 1788103498488,
+              "preview": "         ┃  ⠋ python3 scripts/runtime/macos/migration-audit --project-root \".\" --template-root \"01_治理模板/AI-Governance-┃    Template\" --builder-model \"opencode-go/mimo-v2.5\" --backend opencode 2>&1                                   ┃⬝⬝⬝⬝⬝■■■⬝⬝⬝⬝⬝⬝■■⠙⬝⬝⬝⬝⬝⬝⬝■⬝⬝⬝⬝⬝⬝⬝⬝⠹⬝⬝⬝⬝⬝⬝⬝⬝⬝⬝⬝⬝⬝⬝⬝⬝⠸⬝⬝⬝⬝⬝⬝■■⬝⬝⬝⬝⬝■■■⠼",
+              "executionHostId": "local",
+              "agentIdentity": "opencode"
+            }
+          ],
+          "hostScope": {
+            "hostIds": [
+              "local"
+            ],
+            "omittedHostIds": []
+          },
+          "topologyRevisions": {
+            "32644ffa-35d4-4337-b838-feaf332a1ee3::/Users/zzymima0000/Developer/coding/1.Active/ing 丨0826DS、GPT桌面额度显示工具 PC workbuddy桌面 V1.0": 1
+          },
+          "totalCount": 1,
+          "truncated": false
+        },
+        "_meta": {
+          "runtimeId": "dbbf2488-e947-4af1-b620-598a033829da"
+        }
+      }
+    },
+    "orca_orchestration_guide": {
+      "result": "PASS",
+      "missing": []
+    },
+    "opencode": {
+      "result": "PASS",
+      "path": "/Users/zzymima0000/.nvm/versions/node/v24.19.0/bin/opencode",
+      "version": "1.18.25",
+      "auto_flag": true,
+      "checked_command": "opencode run --help"
+    },
+    "codex": {
+      "result": "PASS",
+      "path": "/Users/zzymima0000/.local/bin/codex",
+      "version": "codex-cli 0.151.0",
+      "sandbox_flag": true,
+      "approval_flag": true
+    }
+  },
+  "app_running": true,
+  "runtime_state": "ready",
+  "runtime_reachable": true,
+  "verified_at": null,
+  "negative_canary": "PASS",
+  "positive_contract": "FAIL",
+  "full_cross_project_learning_loop": "PASS",
+  "migration_audit": "FAIL"
+}

@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+import argparse, json, os, sys, uuid
+from datetime import datetime, timezone
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lock_utils import FileLock, atomic_write_json
+
+VALID_STATES={'LOADED','USED'}
+
+def jsonl(p):
+    if not os.path.exists(p): return []
+    return [json.loads(x) for x in open(p,encoding='utf-8') if x.strip()]
+
+def identity(root,did):
+    p=os.path.join(root,'docs','runtime','TRUSTED_DISPATCH_IDENTITY.jsonl')
+    for x in reversed(jsonl(p)):
+        if x.get('dispatch_id')==did:
+            return x
+    raise SystemExit('DENY: trusted dispatch identity missing')
+
+def project_id(root):
+    p=os.path.join(root,'docs','governance','PROJECT_GOVERNANCE_ORIGIN.yaml')
+    if not os.path.exists(p): return None
+    return json.load(open(p,encoding='utf-8')).get('project_id')
+
+def skill_record(root,sid):
+    p=os.path.join(root,'docs','learning','SKILL_REGISTRY.yaml')
+    d=json.load(open(p,encoding='utf-8'))
+    for s in d.get('skills',[]):
+        if s.get('skill_id')==sid: return p,d,s
+    raise SystemExit('DENY: skill missing from registry')
+
+def update_registry(path,data,sid,project,usage_state,now):
+    for s in data.get('skills',[]):
+        if s.get('skill_id')!=sid: continue
+        s['last_usage_at']=now
+        s['last_usage_state']=usage_state
+        if usage_state=='USED':
+            source=s.get('source_project_id')
+            if source and project and source!=project:
+                if not s.get('first_reused_project_id'):
+                    s['first_reused_project_id']=project
+                s['lifecycle_status']='REUSED_IN_NEXT_PROJECT'
+        break
+    atomic_write_json(path,data)
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--project-root',required=True)
+    ap.add_argument('--dispatch-id',required=True)
+    ap.add_argument('--skill-id',required=True)
+    ap.add_argument('--state',required=True,choices=sorted(VALID_STATES))
+    ap.add_argument('--result',default='PASS')
+    a=ap.parse_args()
+    root=os.path.abspath(a.project_root)
+    ident=identity(root,a.dispatch_id)
+    regp,reg,skill=skill_record(root,a.skill_id)
+    if skill.get('status')!='PRODUCTION':
+        raise SystemExit('DENY: skill is not PRODUCTION')
+
+    loaded=set(ident.get('loaded_skill_ids') or [])
+    used=set(ident.get('used_skill_ids') or [])
+    if a.state=='LOADED' and a.skill_id not in loaded:
+        raise SystemExit('DENY: trusted dispatch metadata does not prove LOADED')
+    if a.state=='USED' and a.skill_id not in used:
+        raise SystemExit('DENY: trusted dispatch metadata does not prove USED')
+
+    pid=project_id(root); now=datetime.now(timezone.utc).isoformat()
+    rec={
+      'usage_id':'SUSE-'+uuid.uuid4().hex[:12],
+      'usage_state':a.state,
+      'skill_id':a.skill_id,
+      'project_id':pid,
+      'source_project_id':skill.get('source_project_id'),
+      'task_id':ident.get('task_id'),
+      'dispatch_id':a.dispatch_id,
+      'worker_id':ident.get('worker_id'),
+      'worker_role':ident.get('actual_role'),
+      'loaded_at':ident.get('started_at') or now,
+      'used_at':now if a.state=='USED' else None,
+      'result':a.result,
+      'recorded_at':now
+    }
+    p=os.path.join(root,'docs','learning','SKILL_USAGE.jsonl')
+    os.makedirs(os.path.dirname(p),exist_ok=True)
+    with FileLock(p+'.lock','skill-usage',timeout=5,stale_after=15):
+        with open(p,'a',encoding='utf-8') as f:
+            f.write(json.dumps(rec,ensure_ascii=False,separators=(',',':'))+'\n')
+            f.flush(); os.fsync(f.fileno())
+
+    with FileLock(regp+'.lock','skill-usage-registry',timeout=5,stale_after=15):
+        fresh=json.load(open(regp,encoding='utf-8'))
+        update_registry(regp,fresh,a.skill_id,pid,a.state,now)
+
+    print(json.dumps(rec,ensure_ascii=False))
+
+if __name__=='__main__':
+    main()

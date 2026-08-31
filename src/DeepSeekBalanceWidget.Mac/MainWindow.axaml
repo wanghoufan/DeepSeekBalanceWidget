@@ -1,0 +1,144 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="DeepSeekBalanceWidget.MainWindow"
+        Title="DeepSeek 余额监控"
+        SystemDecorations="None"
+        Topmost="True"
+        ShowInTaskbar="False"
+        CanResize="False"
+        SizeToContent="WidthAndHeight"
+        TransparencyLevelHint="Transparent"
+        Background="{DynamicResource TransparentBrush}">
+  <Window.Styles>
+    <!-- Keep button labels centered across Fluent theme/platform defaults. -->
+    <Style Selector="Button">
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Padding" Value="8,0" />
+    </Style>
+  </Window.Styles>
+
+  <Grid>
+    <!-- 展开卡片：用于设置、错误详情和完整额度信息。 -->
+    <Border x:Name="Card" Width="390" Margin="12" Padding="18"
+            CornerRadius="16" Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+      <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+        <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock x:Name="StatusDot" Text="●" Foreground="{DynamicResource SuccessBrush}" VerticalAlignment="Center" />
+            <TextBlock x:Name="StatusText" Text="准备就绪" Foreground="{DynamicResource TextMainBrush}" FontWeight="SemiBold" />
+          </StackPanel>
+          <Button x:Name="RefreshButton" Grid.Column="1" Content="刷新" Click="Refresh_Click" Margin="8,0,0,0" />
+          <Button Grid.Column="2" Content="设置" Click="Settings_Click" Margin="8,0,0,0" />
+          <Button Grid.Column="3" x:Name="CardPinBtn" Content="置顶" Click="AlwaysOnTop_Click" Margin="8,0,0,0" />
+          <Button Grid.Column="4" x:Name="CardMiniBtn" Content="迷你" Click="MiniMode_Click" Margin="8,0,0,0" />
+        </Grid>
+
+        <StackPanel x:Name="BalancePanel" Grid.Row="1" Spacing="3" Margin="0,14,0,0">
+          <Grid ColumnDefinitions="Auto,*">
+            <TextBlock x:Name="BalanceText" Text="¥ --.--" FontSize="34" FontWeight="SemiBold" Foreground="{DynamicResource TextStrongBrush}" />
+            <!-- Peak status belongs to DeepSeek and stays beside its balance. -->
+            <TextBlock Grid.Column="1" x:Name="PeakText" Text="● 预计非高峰时段"
+                       Foreground="{DynamicResource PeakSuccessBrush}" FontSize="12"
+                       VerticalAlignment="Center" Margin="14,0,0,0" />
+          </Grid>
+          <TextBlock x:Name="ChangeText" Text="等待首次刷新" Foreground="{DynamicResource TextSecondBrush}" />
+          <TextBlock x:Name="BreakdownText" Text="充值 --.-- · 赠送 --.--" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="12" />
+        </StackPanel>
+
+        <Border Grid.Row="2" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,1,0,0" Padding="0,12,0,0" Margin="0,12,0,0">
+          <StackPanel x:Name="CodexPanel" Spacing="5">
+            <TextBlock Text="ChatGPT Plus 用量" Foreground="{DynamicResource TextHeadingBrush}" FontWeight="SemiBold" />
+            <TextBlock x:Name="CodexText" Text="正在读取本机 Codex 用量…" TextWrapping="Wrap" Foreground="{DynamicResource TextAccentBrush}" />
+          </StackPanel>
+        </Border>
+
+        <Border x:Name="OpenCodePanel" Grid.Row="3" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,1,0,0" Padding="0,12,0,0" Margin="0,12,0,0">
+          <StackPanel Spacing="5">
+            <TextBlock x:Name="OpenCodeTitleText" Text="OpenCode Go 额度" Foreground="{DynamicResource TextHeadingBrush}" FontWeight="SemiBold" />
+            <TextBlock x:Name="OpenCodeText" Text="正在读取 OpenCode Go 用量…" TextWrapping="Wrap" Foreground="{DynamicResource TextAccentBrush}" />
+          </StackPanel>
+        </Border>
+
+        <Border x:Name="WorkbuddyPanel" Grid.Row="4" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,1,0,0" Padding="0,12,0,0" Margin="0,12,0,0">
+          <TextBlock Text="WorkBuddy：暂无额度数据源" Foreground="{DynamicResource TextDimBrush}" />
+        </Border>
+
+        <TextBlock Grid.Row="5" x:Name="ErrorText" Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,8,0,8" />
+        <Grid Grid.Row="6" ColumnDefinitions="*,Auto">
+          <TextBlock x:Name="RefreshTimeText" Text="上次刷新：--" Foreground="{DynamicResource TextDimBrush}" FontSize="11" />
+          <Button Grid.Column="1" Content="隐藏" Click="Hide_Click" />
+        </Grid>
+      </Grid>
+    </Border>
+
+    <!-- Windows MiniCard 对应的 macOS 胶囊：三块固定宽度，操作区固定在最右。 -->
+    <Border x:Name="MiniCard" Margin="12" Padding="12,8"
+            CornerRadius="18" Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+            ToolTip.Tip="拖动调整位置，双击展开">
+      <Grid x:Name="MiniContentPanel" ColumnDefinitions="180,200,170,206" VerticalAlignment="Center">
+        <Border x:Name="MiniDeepSeekBlock" Grid.Column="0" ClipToBounds="True" Padding="5,4" VerticalAlignment="Center">
+          <Grid ColumnDefinitions="22,66,0,10,40">
+            <TextBlock x:Name="MiniDsLabel" Text="DS" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextMainBrush}" TextWrapping="NoWrap" VerticalAlignment="Center" />
+            <TextBlock x:Name="MiniBalanceText" Grid.Column="1" Text="¥ --.--" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextStrongBrush}" TextWrapping="NoWrap" VerticalAlignment="Center" />
+            <TextBlock x:Name="MiniChangeText" Grid.Column="2" Text="" FontSize="10" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="NoWrap" VerticalAlignment="Bottom" IsVisible="False" />
+            <TextBlock x:Name="MiniPeakDot" Grid.Column="3" Text="●" FontSize="9" Foreground="{DynamicResource PeakSuccessBrush}" TextWrapping="NoWrap" VerticalAlignment="Center" HorizontalAlignment="Center" />
+            <TextBlock x:Name="MiniPeakLabel" Grid.Column="4" Text="非高峰" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="NoWrap" VerticalAlignment="Center" />
+          </Grid>
+        </Border>
+
+        <Border x:Name="MiniGptBlock" Grid.Column="1" Width="200" ClipToBounds="True" Background="{DynamicResource ControlBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="9" Padding="6,4" VerticalAlignment="Center">
+            <Grid ColumnDefinitions="18,34,44,34,44" RowDefinitions="Auto,Auto">
+              <TextBlock x:Name="MiniGptA1Label" Text="M" Foreground="{DynamicResource TextMainBrush}" FontWeight="SemiBold" TextWrapping="NoWrap" />
+              <TextBlock x:Name="MiniGptA1Five" Grid.Column="1" Text="--" Foreground="{DynamicResource TextStrongBrush}" TextWrapping="NoWrap" HorizontalAlignment="Right" />
+              <TextBlock x:Name="MiniGptA1FiveCd" Grid.Column="2" Text="--" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="NoWrap" HorizontalAlignment="Right" />
+              <TextBlock x:Name="MiniGptA1Weekly" Grid.Column="3" Text="--" Foreground="{DynamicResource TextStrongBrush}" TextWrapping="NoWrap" HorizontalAlignment="Right" />
+              <TextBlock x:Name="MiniGptA1WeeklyCd" Grid.Column="4" Text="--" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="NoWrap" HorizontalAlignment="Right" />
+              <TextBlock x:Name="MiniGptA2Label" Grid.Row="1" Text="W" Foreground="{DynamicResource TextMainBrush}" FontWeight="SemiBold" TextWrapping="NoWrap" />
+              <TextBlock x:Name="MiniGptA2Five" Grid.Row="1" Grid.Column="1" Text="--" Foreground="{DynamicResource TextStrongBrush}" TextWrapping="NoWrap" HorizontalAlignment="Right" />
+              <TextBlock x:Name="MiniGptA2FiveCd" Grid.Row="1" Grid.Column="2" Text="--" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="NoWrap" HorizontalAlignment="Right" />
+              <TextBlock x:Name="MiniGptA2Weekly" Grid.Row="1" Grid.Column="3" Text="--" Foreground="{DynamicResource TextStrongBrush}" TextWrapping="NoWrap" HorizontalAlignment="Right" />
+              <TextBlock x:Name="MiniGptA2WeeklyCd" Grid.Row="1" Grid.Column="4" Text="--" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="NoWrap" HorizontalAlignment="Right" />
+            </Grid>
+        </Border>
+
+        <Border x:Name="MiniOpenCodeBlock" Grid.Column="2" ClipToBounds="True" Background="{DynamicResource ControlBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="9" Padding="7,4" Margin="8,0,0,0" VerticalAlignment="Center">
+            <Grid ColumnDefinitions="24,34,44,38" RowDefinitions="Auto,Auto,Auto">
+              <TextBlock x:Name="MiniOcLabel" Text="OC" Grid.RowSpan="3" Foreground="{DynamicResource TextMainBrush}" FontWeight="SemiBold" TextWrapping="NoWrap" VerticalAlignment="Center" HorizontalAlignment="Center" />
+              <TextBlock x:Name="MiniOcFivePct" Grid.Column="1" Text="--" Foreground="{DynamicResource TextStrongBrush}" TextWrapping="NoWrap" HorizontalAlignment="Right" />
+              <TextBlock x:Name="MiniOcFiveCd" Grid.Column="2" Text="--" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="NoWrap" HorizontalAlignment="Right" />
+              <Grid Grid.Column="3" Width="34" Height="5" VerticalAlignment="Center" Margin="0">
+                <Border CornerRadius="2.5" Background="{DynamicResource CapsuleTrackBrush}" />
+                <Border x:Name="MiniOcFiveBarFill" CornerRadius="2.5" Background="{DynamicResource CapsuleSuccessBrush}" HorizontalAlignment="Left" Width="0" />
+              </Grid>
+              <TextBlock x:Name="MiniOcWeeklyPct" Grid.Row="1" Grid.Column="1" Text="--" Foreground="{DynamicResource TextStrongBrush}" TextWrapping="NoWrap" HorizontalAlignment="Right" />
+              <TextBlock x:Name="MiniOcWeeklyCd" Grid.Row="1" Grid.Column="2" Text="--" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="NoWrap" HorizontalAlignment="Right" />
+              <Grid Grid.Row="1" Grid.Column="3" Width="34" Height="5" VerticalAlignment="Center" Margin="0">
+                <Border CornerRadius="2.5" Background="{DynamicResource CapsuleTrackBrush}" />
+                <Border x:Name="MiniOcWeeklyBarFill" CornerRadius="2.5" Background="{DynamicResource CapsuleSuccessBrush}" HorizontalAlignment="Left" Width="0" />
+              </Grid>
+              <TextBlock x:Name="MiniOcMonthlyPct" Grid.Row="2" Grid.Column="1" Text="--" Foreground="{DynamicResource TextStrongBrush}" TextWrapping="NoWrap" HorizontalAlignment="Right" />
+              <TextBlock x:Name="MiniOcMonthlyCd" Grid.Row="2" Grid.Column="2" Text="--" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="NoWrap" HorizontalAlignment="Right" />
+              <Grid Grid.Row="2" Grid.Column="3" Width="34" Height="5" VerticalAlignment="Center" Margin="0">
+                <Border CornerRadius="2.5" Background="{DynamicResource CapsuleTrackBrush}" />
+                <Border x:Name="MiniOcMonthlyBarFill" CornerRadius="2.5" Background="{DynamicResource CapsuleSuccessBrush}" HorizontalAlignment="Left" Width="0" />
+              </Grid>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Column="3" Width="206" ClipToBounds="True" RowDefinitions="Auto,Auto" HorizontalAlignment="Left" VerticalAlignment="Center">
+          <TextBlock x:Name="MiniRefreshTimeText" Text="刷新 --:--:--" FontSize="10" Foreground="{DynamicResource TextDimBrush}"
+                     TextWrapping="NoWrap" HorizontalAlignment="Right" VerticalAlignment="Top" />
+          <StackPanel x:Name="MiniButtonBar" Grid.Row="1" Width="230" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,2,0,0">
+            <Button x:Name="MiniEdgeAutoHideBtn" Width="56" Content="贴边" Click="MiniEdgeAutoHideBtn_Click" ToolTip.Tip="贴边自动隐藏" />
+            <Button x:Name="AlwaysOnTopBtn" Width="56" Content="置顶" Click="AlwaysOnTop_Click" />
+            <Button x:Name="MiniMinBtn" Width="60" Content="最小化" Click="MiniMinBtn_Click" />
+            <Button x:Name="MiniCloseBtn" Width="56" Content="关闭" Click="MiniCloseBtn_Click" />
+          </StackPanel>
+        </Grid>
+
+        <TextBlock x:Name="MiniWorkbuddyBlock" Grid.Column="2" Text="WB --" Foreground="{DynamicResource TextDimBrush}" FontWeight="SemiBold" TextWrapping="NoWrap" VerticalAlignment="Center" IsVisible="False" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+import json,os,subprocess,sys,tempfile
+BASE=os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..'))
+U=os.path.join(BASE,'scripts','governance','record-skill-usage')
+E=os.path.join(BASE,'scripts','governance','record-skill-effectiveness')
+with tempfile.TemporaryDirectory() as d:
+    os.makedirs(os.path.join(d,'docs','learning')); os.makedirs(os.path.join(d,'docs','runtime')); os.makedirs(os.path.join(d,'docs','governance'))
+    json.dump({'project_id':'PROJECT-B'},open(os.path.join(d,'docs','governance','PROJECT_GOVERNANCE_ORIGIN.yaml'),'w'))
+    json.dump({'patterns':{'PAT':{'canonical_id':'PAT','effectiveness':'UNKNOWN'}}},open(os.path.join(d,'docs','learning','LEARNING_PATTERN_REGISTRY.yaml'),'w'))
+    json.dump({'skills':[{
+      'skill_id':'S','status':'PRODUCTION','lifecycle_status':'INCLUDED_IN_TEMPLATE','source_project_id':'PROJECT-A',
+      'source_canonical_pattern_id':'PAT'
+    }]},open(os.path.join(d,'docs','learning','SKILL_REGISTRY.yaml'),'w'))
+    open(os.path.join(d,'docs','learning','SKILL_USAGE.jsonl'),'w').close()
+    open(os.path.join(d,'docs','learning','SKILL_EFFECTIVENESS.jsonl'),'w').close()
+    with open(os.path.join(d,'docs','runtime','TRUSTED_DISPATCH_IDENTITY.jsonl'),'w') as f:
+        f.write(json.dumps({'dispatch_id':'DUSE','worker_id':'WU','task_id':'T1','actual_role':'builder','loaded_skill_ids':['S'],'used_skill_ids':['S']})+'\n')
+        f.write(json.dumps({'dispatch_id':'DQA','worker_id':'WQ','task_id':'T1','actual_role':'qa','loaded_skill_ids':[],'used_skill_ids':[]})+'\n')
+    ur=subprocess.run([sys.executable,'-S',U,'--project-root',d,'--dispatch-id','DUSE','--skill-id','S','--state','USED'],capture_output=True,text=True)
+    assert ur.returncode==0,ur.stderr
+    uid=json.loads(ur.stdout)['usage_id']
+    prov={'expected_outcome':'help','actual_outcome':'helped','helped':True,'failure':False,'manual_intervention':False,'rework_count':0,'effectiveness_result':'PROVISIONAL_EFFECTIVE'}
+    r=subprocess.run([sys.executable,'-S',E,'--project-root',d,'--dispatch-id','DUSE','--usage-id',uid],input=json.dumps(prov),capture_output=True,text=True)
+    assert r.returncode==0,r.stderr
+    reg=json.load(open(os.path.join(d,'docs','learning','SKILL_REGISTRY.yaml')))
+    assert reg['skills'][0]['lifecycle_status']=='REUSED_IN_NEXT_PROJECT'
+    conf={**prov,'effectiveness_result':'CONFIRMED_EFFECTIVE'}
+    r=subprocess.run([sys.executable,'-S',E,'--project-root',d,'--dispatch-id','DQA','--usage-id',uid],input=json.dumps(conf),capture_output=True,text=True)
+    assert r.returncode==0,r.stderr
+    reg=json.load(open(os.path.join(d,'docs','learning','SKILL_REGISTRY.yaml')))
+    assert reg['skills'][0]['lifecycle_status']=='EFFECTIVENESS_RECORDED'
+    bad={**conf,'failure':True}
+    r=subprocess.run([sys.executable,'-S',E,'--project-root',d,'--dispatch-id','DQA','--usage-id',uid],input=json.dumps(bad),capture_output=True,text=True)
+    assert r.returncode!=0
+print('PASS test-effectiveness-independent-confirmation')

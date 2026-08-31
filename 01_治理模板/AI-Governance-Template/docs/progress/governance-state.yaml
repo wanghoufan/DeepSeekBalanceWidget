@@ -1,0 +1,14 @@
+schema_version: 2.3.1
+authoritative: true
+stage_id: STAGE-TBD
+state: DRAFT
+repo_id: REPO-TBD
+worktree_id: WT-TBD
+commit_sha: null
+updated_at: null
+transition_receipt_id: null
+stage_p0:
+- p0_id: P0-TBD-1
+  status: INCOMPLETE
+  required_evidence_types: []
+current_task_id: null

@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+import json, os, shutil, subprocess, sys, tempfile
+BASE=os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..'))
+W=os.path.join(BASE,'scripts','governance','write-learning-event')
+R=os.path.join(BASE,'scripts','governance','learning-router')
+
+with tempfile.TemporaryDirectory() as d:
+    os.makedirs(os.path.join(d,'docs','learning'),exist_ok=True)
+    shutil.copy2(os.path.join(BASE,'docs','learning','LEARNING_PATTERN_REGISTRY.yaml'),
+                 os.path.join(d,'docs','learning','LEARNING_PATTERN_REGISTRY.yaml'))
+    outs=[]
+    for i in range(3):
+        e={
+          'project_id':'P','stage_id':'S','trigger':'USER_CORRECTION',
+          'symptom':'Task Manager stops before P0 completion','root_cause':'prompt-only',
+          'current_fix':'resume','impact':'HIGH','candidate_type':'GUARD_RULE',
+          'reusable':True,'learning_pattern_id':'TM_DO_NOT_STOP'
+        }
+        w=subprocess.run([sys.executable,'-S',W,'--repo-root',d],input=json.dumps(e),text=True,capture_output=True)
+        assert w.returncode==0,w.stderr
+        eid=json.loads(w.stdout)['event_id']
+        rr=subprocess.run([sys.executable,'-S',R,'--repo-root',d,'--event-id',eid],text=True,capture_output=True)
+        assert rr.returncode==0,rr.stderr
+        outs.append(json.loads(rr.stdout))
+    assert outs[0]['routing_class']=='PROJECT_PATCH'
+    assert outs[1]['routing_class']=='TEMPLATE'
+    assert outs[1]['rule_escalation']=='REUSABLE_CANDIDATE_ROOT_CAUSE_REVIEW'
+    assert outs[2]['routing_class']=='GUARD_RULE'
+    assert outs[2]['rule_escalation']=='GUARD_CONTRACT_TEST_TOOL_CONSTRAINT'
+print('PASS test-user-correction-escalation')

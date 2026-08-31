@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""
+Bind Orca worker_done evidence to trusted dispatch identity and used_skill_ids.
+Input is an Orca worker_done delivery/receipt JSON captured from the active Run.
+"""
+import argparse,json,os,sys
+sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
+from common import extract
+sys.path.insert(0,os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..','governance')))
+from internal_capability import issue as issue_internal
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--project-root',required=True)
+    ap.add_argument('--worker-done-json',required=True)
+    ap.add_argument('--role',required=True)
+    a=ap.parse_args()
+    data=json.load(open(a.worker_done_json,encoding='utf-8'))
+    task_id=extract(data,['taskId','task_id'])
+    dispatch_id=extract(data,['dispatchId','dispatch_id'])
+    worker_id=extract(data,['workerId','worker_id','worker'])
+    outcome=extract(data,['outcome'])
+    if not task_id or not dispatch_id or outcome not in {'succeeded','failed'}:
+        raise SystemExit('DENY: invalid worker_done identity/outcome')
+    body=extract(data,['body']) or ''
+    used=[]
+    try:
+        b=json.loads(body) if isinstance(body,str) else body
+        used=list(b.get('used_skill_ids') or []) if isinstance(b,dict) else []
+    except Exception:
+        used=[]
+    # Preserve previous loaded ids from trusted ledger.
+    ledger=os.path.join(a.project_root,'docs','runtime','TRUSTED_DISPATCH_IDENTITY.jsonl')
+    loaded=[]
+    if os.path.exists(ledger):
+        for line in open(ledger,encoding='utf-8'):
+            if not line.strip(): continue
+            r=json.loads(line)
+            if r.get('dispatch_id')==dispatch_id:
+                loaded=list(r.get('loaded_skill_ids') or [])
+    if any(x not in loaded for x in used):
+        raise SystemExit('DENY: worker claims used skill that was not loaded')
+    token=issue_internal('WRITE_TRUSTED_DISPATCH_IDENTITY',{'dispatch_id':dispatch_id,'task_id':task_id,'role':a.role},ttl_seconds=30)
+    writer=os.path.join(os.path.dirname(__file__),'trusted-dispatch-identity-writer')
+    import subprocess
+    r=subprocess.run([sys.executable,'-S',writer,'--project-root',a.project_root,
+                      '--dispatch-id',dispatch_id,'--task-id',task_id,'--worker-id',str(worker_id or ''),
+                      '--role',a.role,'--loaded-skill-ids',json.dumps(loaded),
+                      '--used-skill-ids',json.dumps(used),'--internal-token',token],
+                     capture_output=True,text=True,timeout=15)
+    if r.returncode!=0: raise SystemExit(r.stderr)
+    print(json.dumps({'validation_adapter':'PASS','task_id':task_id,'dispatch_id':dispatch_id,'outcome':outcome,'used_skill_ids':used},ensure_ascii=False))
+if __name__=='__main__': main()

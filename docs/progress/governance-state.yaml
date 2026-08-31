@@ -1,0 +1,19 @@
+schema_version: 2.3.1
+authoritative: true
+stage_id: STAGE-GOVERNANCE-MIGRATION
+state: DRAFT
+repo_id: github.com/wanghoufan/DeepSeekBalanceWidget
+worktree_id: WT-LOCAL-UNREGISTERED
+commit_sha: null
+updated_at: '2026-08-30T14:44:37+00:00'
+transition_receipt_id: null
+stage_p0:
+- p0_id: P0-GOV-MIGRATION-1
+  status: INCOMPLETE
+  required_evidence_types:
+  - STRUCTURE
+  - GOVERNANCE_CONTRACT
+  - DOTNET_BUILD
+  - DOTNET_TEST
+  - MAC_RUNTIME_AUDIT
+current_task_id: null

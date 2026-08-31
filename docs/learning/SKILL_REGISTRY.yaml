@@ -1,0 +1,48 @@
+{
+  "schema_version": "2.3.1-mac-first-final",
+  "authoritative": true,
+  "source_of_truth": "docs/learning/SKILL_REGISTRY.yaml",
+  "activation_policy": {
+    "dispatch_gateway_must_resolve_before_worker_launch": true,
+    "auto_activate_risk_levels": [
+      "LOW"
+    ],
+    "higher_risk_requires_trusted_user_approval": true
+  },
+  "lifecycle": [
+    "OBSERVED",
+    "CANDIDATE",
+    "IMPLEMENTED_LOCAL",
+    "VALIDATED_ON_REAL_TASK",
+    "PROMOTED_TO_GOVERNANCE",
+    "INCLUDED_IN_TEMPLATE",
+    "REUSED_IN_NEXT_PROJECT",
+    "EFFECTIVENESS_RECORDED"
+  ],
+  "required_production_fields": [
+    "skill_id",
+    "status",
+    "lifecycle_status",
+    "path",
+    "trigger",
+    "task_types",
+    "applicable_roles",
+    "required_capabilities",
+    "required_tools",
+    "write_scope",
+    "shell_scope",
+    "network_scope",
+    "computer_use",
+    "destructive",
+    "risk_level",
+    "validated_receipt_id",
+    "validated_content_hash",
+    "source_project_id",
+    "source_learning_event_id",
+    "first_promoted_at",
+    "first_reused_project_id",
+    "template_version",
+    "last_validated"
+  ],
+  "skills": []
+}

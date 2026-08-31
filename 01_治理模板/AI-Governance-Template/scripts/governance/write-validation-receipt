@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+import argparse, json, os, sys, uuid
+from datetime import datetime, timezone, timedelta
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lock_utils import FileLock
+
+VALIDATOR_ROLES={'qa','code-reviewer','product-reviewer','automated-test'}
+ALLOWED_SCOPES={'PROMOTION_VALIDATION','SKILL_PROMOTION','TEMPLATE_PIN_REVALIDATION','GENERAL_VALIDATION','BOOTSTRAP_VALIDATION'}
+
+def jsonl(path):
+    if not os.path.exists(path): return []
+    return [json.loads(x) for x in open(path,encoding='utf-8') if x.strip()]
+
+def lookup_identity(root,dispatch_id):
+    p=os.path.join(root,'docs','runtime','TRUSTED_DISPATCH_IDENTITY.jsonl')
+    for x in reversed(jsonl(p)):
+        if x.get('dispatch_id')==dispatch_id:
+            return x
+    raise SystemExit('DENY: trusted dispatch identity not found')
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--repo-root',default='.')
+    ap.add_argument('--dispatch-id',required=True)
+    ap.add_argument('--scope',default='GENERAL_VALIDATION')
+    ap.add_argument('--validation-json')
+    a=ap.parse_args()
+    root=os.path.abspath(a.repo_root)
+    if a.scope not in ALLOWED_SCOPES:
+        raise SystemExit('DENY: invalid validation scope')
+    ident=lookup_identity(root,a.dispatch_id)
+    role=ident.get('actual_role')
+    if role not in VALIDATOR_ROLES:
+        raise SystemExit('DENY: dispatch role is not an approved validation producer')
+
+    v=json.loads(a.validation_json if a.validation_json else sys.stdin.read())
+    required=['what_test','target','target_hash','target_version','result']
+    miss=[k for k in required if k not in v]
+    if miss: raise SystemExit('missing validation fields: '+','.join(miss))
+    if str(v['result']).upper()!='PASS':
+        raise SystemExit('DENY: only PASS creates validation receipt')
+
+    binding=v.get('bootstrap_binding')
+    if a.scope=='BOOTSTRAP_VALIDATION':
+        if not isinstance(binding,dict):
+            raise SystemExit('DENY: bootstrap validation binding required')
+        required=['bootstrap_id','bootstrap_type','source_template_version','source_manifest_hash',
+                  'source_fingerprint','exact_file_set','pre_change_file_hashes',
+                  'post_change_file_hashes','bootstrap_bundle_hash','ephemeral_executor_sha256']
+        missing=[k for k in required if k not in binding]
+        if missing: raise SystemExit('DENY: bootstrap validation binding missing '+','.join(missing))
+
+    skill_risk=v.get('skill_risk')
+    if skill_risk is not None:
+        need=['required_tools','write_scope','shell_scope','network_scope','computer_use','destructive','risk_level']
+        missing=[k for k in need if k not in skill_risk]
+        if missing: raise SystemExit('skill_risk missing: '+','.join(missing))
+
+    now=datetime.now(timezone.utc)
+    rec={
+      'record_type':'BOOTSTRAP_VALIDATION_ISSUED' if a.scope=='BOOTSTRAP_VALIDATION' else 'ISSUED',
+      'validation_receipt_id':'VAL-'+uuid.uuid4().hex[:12],
+      'scope':a.scope,
+      'dispatch_id':a.dispatch_id,
+      'task_id':ident.get('task_id'),
+      'producer_worker_id':ident.get('worker_id'),
+      'producer_role':role,
+      'what_test':v['what_test'],
+      'target':v['target'],
+      'target_hash':v['target_hash'],
+      'target_version':v['target_version'],
+      'validation_environment_template_fingerprint':v.get('validation_environment_template_fingerprint'),
+      'result':'PASS',
+      'skill_risk':skill_risk,
+      'executed_at':v.get('executed_at') or now.isoformat(),
+      'issued_at':now.isoformat(),
+      'expires_at':(now+timedelta(hours=int(v.get('ttl_hours',24)))).isoformat(),
+      'one_shot':True
+    }
+    if binding:
+        rec['bootstrap_binding']=binding
+        rec['bootstrap_id']=binding.get('bootstrap_id')
+    ledger=os.path.join(root,'docs','learning','VALIDATION_RECEIPTS.jsonl')
+    os.makedirs(os.path.dirname(ledger),exist_ok=True)
+    with FileLock(ledger+'.lock','write-validation-receipt',timeout=5,stale_after=15):
+        with open(ledger,'a',encoding='utf-8') as f:
+            f.write(json.dumps(rec,ensure_ascii=False,separators=(',',':'))+'\n')
+            f.flush(); os.fsync(f.fileno())
+    print(json.dumps(rec,ensure_ascii=False))
+
+if __name__=='__main__': main()

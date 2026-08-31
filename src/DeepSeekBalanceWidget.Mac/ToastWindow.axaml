@@ -1,0 +1,46 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="DeepSeekBalanceWidget.ToastWindow"
+        Width="260"
+        SizeToContent="Height"
+        CanResize="False"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        SystemDecorations="None"
+        WindowStartupLocation="Manual">
+  <Border x:Name="ToastBorder"
+          Background="#F2333333"
+          BorderBrush="#88FFFFFF"
+          BorderThickness="1"
+          CornerRadius="8"
+          Padding="10">
+    <StackPanel Spacing="4">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock x:Name="TitleText"
+                   FontSize="13"
+                   FontWeight="Bold"
+                   Foreground="#FFFFFF"
+                   TextWrapping="Wrap"
+                   VerticalAlignment="Center" />
+        <Button x:Name="DismissBtn"
+                Grid.Column="1"
+                Content="知道了"
+                IsVisible="False"
+                Click="DismissBtn_Click"
+                Margin="8,0,0,0"
+                Padding="10,2"
+                Background="#FFB04D"
+                Foreground="#1A2129"
+                BorderThickness="0"
+                FontSize="11"
+                FontWeight="SemiBold" />
+      </Grid>
+      <TextBlock x:Name="BodyText"
+                 FontSize="11"
+                 Foreground="#DDDDDD"
+                 TextWrapping="Wrap" />
+    </StackPanel>
+  </Border>
+</Window>

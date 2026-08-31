@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+import argparse, hashlib, json, os, sys
+
+def ss(s):
+    return {x.strip() for x in (s or '').split(',') if x.strip()}
+
+def h(p):
+    x=hashlib.sha256()
+    with open(p,'rb') as f:
+        for c in iter(lambda:f.read(65536),b''):
+            x.update(c)
+    return x.hexdigest()
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--project-root',default='.')
+    ap.add_argument('--role',required=True)
+    ap.add_argument('--task-type',required=True)
+    ap.add_argument('--triggers',default='')
+    ap.add_argument('--capabilities',default='')
+    a=ap.parse_args()
+
+    root=os.path.abspath(a.project_root)
+    regp=os.path.join(root,'docs','learning','SKILL_REGISTRY.yaml')
+    manp=os.path.join(root,'docs','governance','PROJECT_GOVERNANCE_APPLIED_MANIFEST.json')
+    if not os.path.exists(regp):
+        raise SystemExit('SKILL_REGISTRY missing')
+    if not os.path.exists(manp):
+        raise SystemExit('APPLIED_TEMPLATE_MANIFEST missing')
+    data=json.load(open(regp,encoding='utf-8'))
+    manifest=json.load(open(manp,encoding='utf-8'))
+    manifest_by={x.get('path'):x for x in manifest.get('files',[])}
+
+    trig=ss(a.triggers); caps=ss(a.capabilities)
+    selected=[]; approval=[]; blocked=[]
+    for s in data.get('skills',[]):
+        if s.get('status')!='PRODUCTION':
+            continue
+        if a.role not in s.get('applicable_roles',[]):
+            continue
+        if a.task_type not in s.get('task_types',[]):
+            continue
+        st=set(s.get('trigger',[]))
+        if st and not (st & trig):
+            continue
+        req_caps=set(s.get('required_capabilities',[]))
+        if not req_caps.issubset(caps):
+            continue
+
+        sid=s.get('skill_id'); rel=s.get('path'); expected=s.get('validated_content_hash')
+        filep=os.path.join(root,rel or '')
+        reason=None
+        if not rel or not os.path.isfile(filep):
+            reason='SKILL_FILE_MISSING'
+        elif not expected:
+            reason='VALIDATED_CONTENT_HASH_MISSING'
+        else:
+            actual=h(filep)
+            if actual!=expected:
+                reason='SKILL_DRIFT'
+            else:
+                me=manifest_by.get(rel)
+                if not me:
+                    reason='SKILL_NOT_IN_APPLIED_MANIFEST'
+                elif me.get('sha256')!=expected:
+                    reason='REGISTRY_MANIFEST_HASH_MISMATCH'
+        if reason:
+            blocked.append({'skill_id':sid,'reason':reason,'path':rel})
+            continue
+
+        if str(s.get('risk_level','')).upper()!='LOW' or s.get('destructive') is True:
+            approval.append(sid)
+            continue
+        selected.append({
+          'skill_id':sid,'path':rel,'lifecycle_status':s.get('lifecycle_status'),
+          'risk_level':s.get('risk_level'),'validated_content_hash':expected
+        })
+
+    out={
+      'selected_skills':selected,
+      'approval_required_skills':approval,
+      'blocked_skills':blocked,
+      'activation_count':len(selected),
+      'blocked_count':len(blocked)
+    }
+    print(json.dumps(out,ensure_ascii=False))
+    if blocked:
+        sys.exit(4)
+
+if __name__=='__main__':
+    main()

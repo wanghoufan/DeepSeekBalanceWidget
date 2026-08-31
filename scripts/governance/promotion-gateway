@@ -1,0 +1,330 @@
+#!/usr/bin/env python3
+import argparse, hashlib, json, os, re, shutil, subprocess, sys, uuid
+from datetime import datetime, timezone
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lock_utils import FileLock, atomic_write_json
+from promotion_queue_lib import update_queue
+from internal_capability import issue as issue_internal
+
+LOW={'PROMPT_CLARIFICATION','ROLE_REMINDER','CHECKLIST','SKILL','TEST_HELPER','SOP','RESUME_HANDOFF','TOKEN_SAVING','DOCUMENT_TEMPLATE','LOW_RISK_QA_WORKFLOW'}
+HIGH={'ROLE_AUTHORITY','PERMISSION','HUMAN_GATE','RESOURCE_POOL','GO_POLICY','PRODUCTION_MODEL_MAPPING','FIX_BUDGET_CORE','P0_GUARD','DESTRUCTIVE_PERMISSION','STATE_MACHINE_CORE','SANDBOX_LEVEL'}
+PREFIX=('docs/prompts/','docs/checklists/','docs/handoff/','docs/workflow/helpers/','docs/learning/promoted/','docs/roles/reminders/','skills/')
+RUNTIME_PREFIX=('scripts/runtime/macos/','tests/governance/test-macos-runtime-adapter-static','tests/governance/test-runtime-health-evidence-contract')
+GOVERNANCE_INFRA_PREFIX=('scripts/governance/learning-','scripts/governance/resolve-learning-pattern','scripts/governance/request-pattern-merge','scripts/governance/pattern-merge-gateway','scripts/governance/write-learning-event','tests/governance/test-','docs/learning/LEARNING_PATTERN_REGISTRY.yaml','docs/learning/LEARNING_POLICY.md')
+TRUST_ANCHOR_PATHS={
+ 'scripts/governance/promotion-gateway','scripts/governance/record-user-approval',
+ 'scripts/governance/validate-user-approval-receipt','scripts/governance/internal_capability.py',
+ 'scripts/governance/template-sync','scripts/governance/write-bootstrap-evidence',
+ 'docs/governance/BOOTSTRAP_HISTORY_SCHEMA.json','docs/governance/PERMISSION_MATRIX.md',
+ 'docs/governance/TEMPLATE_VERSION.yaml','docs/governance/TEMPLATE_MANIFEST.json'
+}
+HUMAN_GATED={'RUNTIME_ADAPTER_FIX','GOVERNANCE_INFRASTRUCTURE_FIX'}
+APPROVED={
+ 'PROMPT_CLARIFICATION':{'experience-recorder'},'ROLE_REMINDER':{'experience-recorder'},
+ 'CHECKLIST':{'experience-recorder'},'SOP':{'experience-recorder'},
+ 'RESUME_HANDOFF':{'experience-recorder'},'TOKEN_SAVING':{'experience-recorder'},
+ 'DOCUMENT_TEMPLATE':{'experience-recorder'},'LOW_RISK_QA_WORKFLOW':{'experience-recorder','qa'},
+ 'SKILL':{'builder','experience-recorder'},'TEST_HELPER':{'builder','qa'},
+ 'RUNTIME_ADAPTER_FIX':{'builder','experience-recorder'},
+ 'GOVERNANCE_INFRASTRUCTURE_FIX':{'builder','experience-recorder'}
+}
+
+def fh(p):
+    h=hashlib.sha256()
+    with open(p,'rb') as f:
+        for c in iter(lambda:f.read(65536),b''): h.update(c)
+    return h.hexdigest()
+
+def jsonl(p):
+    if not os.path.exists(p): return []
+    return [json.loads(x) for x in open(p,encoding='utf-8') if x.strip()]
+
+def append_locked(p,obj,owner):
+    os.makedirs(os.path.dirname(p),exist_ok=True)
+    with FileLock(p+'.lock',owner,timeout=5,stale_after=15):
+        with open(p,'a',encoding='utf-8') as f:
+            f.write(json.dumps(obj,ensure_ascii=False,separators=(',',':'))+'\n')
+            f.flush(); os.fsync(f.fileno())
+
+def safe_rel(r):
+    return bool(r) and not os.path.isabs(r) and '..' not in r.split('/') and r.startswith(PREFIX)
+
+def safe_runtime_rel(r):
+    return bool(r) and not os.path.isabs(r) and '..' not in r.split('/') and any(r.startswith(p) for p in RUNTIME_PREFIX)
+
+def safe_governance_infra_rel(r):
+    if not r or os.path.isabs(r) or '..' in r.split('/') or r in TRUST_ANCHOR_PATHS:
+        return False
+    return any(r.startswith(p) for p in GOVERNANCE_INFRA_PREFIX)
+
+def trusted_actor(project,did):
+    p=os.path.join(project,'docs','runtime','TRUSTED_DISPATCH_IDENTITY.jsonl')
+    for x in reversed(jsonl(p)):
+        if x.get('dispatch_id')==did: return x
+    raise SystemExit('DENY: trusted actor dispatch identity missing')
+
+def validation(project,rid,scope):
+    p=os.path.join(project,'docs','learning','VALIDATION_RECEIPTS.jsonl')
+    rs=[x for x in jsonl(p) if x.get('validation_receipt_id')==rid]
+    issued=next((x for x in rs if x.get('record_type')=='ISSUED'),None)
+    if not issued: raise SystemExit('DENY: validation receipt missing')
+    if any(x.get('record_type')=='CONSUMED' for x in rs): raise SystemExit('DENY: validation receipt replay')
+    if issued.get('result')!='PASS' or issued.get('one_shot') is not True: raise SystemExit('DENY: invalid validation receipt')
+    if issued.get('scope')!=scope: raise SystemExit('DENY: validation receipt scope mismatch')
+    if issued.get('expires_at') and datetime.fromisoformat(issued['expires_at'])<datetime.now(timezone.utc):
+        raise SystemExit('DENY: validation receipt expired')
+    return issued,p
+
+def consume_validation(p,rid,pid):
+    append_locked(p,{'record_type':'CONSUMED','validation_receipt_id':rid,'promotion_id':pid,'used_at':datetime.now(timezone.utc).isoformat()},'validation-consume')
+
+def learning_event(project,eid):
+    p=os.path.join(project,'docs','learning','LEARNING_EVENTS.jsonl')
+    for x in reversed(jsonl(p)):
+        if x.get('event_id')==eid: return x
+    return {}
+
+def origin(project):
+    p=os.path.join(project,'docs','governance','PROJECT_GOVERNANCE_ORIGIN.yaml')
+    return json.load(open(p,encoding='utf-8')) if os.path.exists(p) else {}
+
+def template_state(template):
+    v=json.load(open(os.path.join(template,'docs','governance','TEMPLATE_VERSION.yaml'),encoding='utf-8'))
+    return v['template_version'],fh(os.path.join(template,'docs','governance','TEMPLATE_MANIFEST.json'))
+
+def validate_user_approval(project,approval_id,project_id,template_version,manifest_hash,consume=False):
+    if not approval_id: raise SystemExit('DENY: approval_id required for human-gated promotion')
+    validator=os.path.join(os.path.dirname(os.path.abspath(__file__)),'validate-user-approval-receipt')
+    cmd=[sys.executable,'-S',validator,'--repo-root',project,'--approval-id',approval_id,
+         '--scope','TEMPLATE_PROMOTION','--project-id',project_id,
+         '--template-version',template_version,'--manifest-hash',manifest_hash]
+    if consume: cmd.append('--consume')
+    rr=subprocess.run(cmd,capture_output=True,text=True,timeout=15)
+    if rr.returncode!=0:
+        raise SystemExit((rr.stderr or rr.stdout or 'DENY: user approval validation failed').strip())
+    return json.loads(rr.stdout).get('approval',{})
+
+def bump_preview(v):
+    m=re.fullmatch(r'(.+-template\.)(\d+)',str(v))
+    if not m: raise SystemExit('DENY: unsupported template version')
+    return m.group(1)+str(int(m.group(2))+1)
+
+def sync_pattern(project,template,canonical_id,enforcement):
+    if not canonical_id: return
+    pp=os.path.join(project,'docs','learning','LEARNING_PATTERN_REGISTRY.yaml')
+    tp=os.path.join(template,'docs','learning','LEARNING_PATTERN_REGISTRY.yaml')
+    if not os.path.exists(pp): return
+    pd=json.load(open(pp,encoding='utf-8'))
+    rec=pd.get('patterns',{}).get(canonical_id)
+    if not rec: return
+    now=datetime.now(timezone.utc).isoformat()
+    rec['current_enforcement']=enforcement
+    rec['last_enforcement_change']=now
+    rec['recurrence_after_enforcement']=0
+    rec['effectiveness']='UNKNOWN'
+    atomic_write_json(pp,pd)
+    td=json.load(open(tp,encoding='utf-8')) if os.path.exists(tp) else {'schema_version':'2.3.1-self-learning-final','authoritative':True,'patterns':{}}
+    td.setdefault('patterns',{})[canonical_id]=rec
+    atomic_write_json(tp,td)
+
+def stale_preflight(project,template):
+    guard=os.path.join(os.path.dirname(os.path.abspath(__file__)),'stale-template-guard')
+    r=subprocess.run([sys.executable,'-S',guard,'--project-root',project,'--template-root',template],
+                     capture_output=True,text=True,timeout=15)
+    try: out=json.loads(r.stdout or '{}')
+    except Exception: out={'status':'UNKNOWN','raw':r.stdout}
+    status=out.get('status')
+    if r.returncode==0 and status=='CURRENT':
+        return out
+    if r.returncode==0 and status=='PINNED_OLD_TEMPLATE':
+        raise SystemExit('DENY: PINNED_OLD_TEMPLATE cannot promote directly to shared latest template; revalidate candidate in a CURRENT latest-template environment')
+    raise SystemExit('DENY: stale promotion preflight failed: '+json.dumps(out,ensure_ascii=False))
+
+def update_applied(project,template,sync,pid):
+    ap=os.path.join(project,'docs','governance','PROJECT_GOVERNANCE_APPLIED.yaml')
+    mp=os.path.join(template,'docs','governance','TEMPLATE_MANIFEST.json')
+    snapshot=os.path.join(project,'docs','governance','PROJECT_GOVERNANCE_APPLIED_MANIFEST.json')
+    d=json.load(open(ap,encoding='utf-8'))
+    d['current_applied_template_version']=sync['template_version']
+    d['current_applied_manifest_hash']=sync['template_manifest_hash']
+    d['current_applied_fingerprint']=sync['template_fingerprint']
+    d['last_promotion_id']=pid
+    d['updated_at']=datetime.now(timezone.utc).isoformat()
+    d['pin']=None
+    atomic_write_json(ap,d)
+    shutil.copy2(mp,snapshot)
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--request',required=True)
+    ap.add_argument('--project-root',required=True)
+    ap.add_argument('--template-root',required=True)
+    ap.add_argument('--dispatch-id',required=True)
+    a=ap.parse_args()
+    project=os.path.abspath(a.project_root); template=os.path.abspath(a.template_root)
+    req=json.load(open(a.request,encoding='utf-8'))
+    ident=trusted_actor(project,a.dispatch_id)
+    role=ident.get('actual_role')
+    if role=='task-manager': raise SystemExit('DENY: Task Manager cannot production-promote')
+
+    typ=req.get('change_type'); risk=req.get('risk'); rel=req.get('relative_path')
+    src=req.get('content_file'); eid=req.get('learning_event_id'); rid=req.get('validation_receipt_id')
+    approval_id=req.get('approval_id')
+    if (typ in HIGH or risk=='HIGH') and typ not in HUMAN_GATED: raise SystemExit('DENY: high-impact governance change requires Human Gate')
+    if typ not in LOW and typ not in HUMAN_GATED: raise SystemExit('DENY: change type is not promotable')
+    if typ in HUMAN_GATED and risk!='HIGH': raise SystemExit('DENY: human-gated promotion must be HIGH risk')
+    if typ in LOW and risk!='LOW': raise SystemExit('DENY: only low-risk allowlist auto promotion')
+    if role not in APPROVED.get(typ,set()): raise SystemExit('DENY: trusted actor role not approved')
+    files=req.get('files')
+    if files is None: files=[{'relative_path':rel,'content_file':src}]
+    if not isinstance(files,list) or not files: raise SystemExit('DENY: promotion files missing')
+    for item in files:
+        rr=item.get('relative_path'); cf=item.get('content_file')
+        if typ=='RUNTIME_ADAPTER_FIX': allowed=safe_runtime_rel(rr)
+        elif typ=='GOVERNANCE_INFRASTRUCTURE_FIX': allowed=safe_governance_infra_rel(rr)
+        else: allowed=safe_rel(rr)
+        if not allowed: raise SystemExit('DENY: unsafe promotion target')
+        if not cf or not os.path.isfile(cf): raise SystemExit('DENY: content_file missing')
+        if item.get('sha256') and item['sha256']!=fh(cf): raise SystemExit('DENY: content hash mismatch')
+    if typ in HUMAN_GATED and len(files)<2: raise SystemExit('DENY: human-gated promotion requires a bounded file bundle')
+    if not rid: raise SystemExit('DENY: validation_receipt_id required')
+
+    project_origin=origin(project)
+    approved_template_version,approved_manifest_hash=template_state(template)
+    approval=None
+    if typ in HUMAN_GATED:
+        approval=validate_user_approval(project,approval_id,project_origin.get('project_id'),approved_template_version,approved_manifest_hash)
+
+    required_scope='SKILL_PROMOTION' if typ=='SKILL' else 'PROMOTION_VALIDATION'
+    vr,vledger=validation(project,rid,required_scope)
+    content_hash=fh(files[0]['content_file'])
+    bundle_hash=req.get('bundle_hash')
+    if typ in HUMAN_GATED:
+        canonical_bundle=[{'relative_path':x['relative_path'],'sha256':fh(x['content_file'])} for x in files]
+        canonical_bundle=sorted(canonical_bundle,key=lambda x:x['relative_path'])
+        computed_bundle=hashlib.sha256(json.dumps(canonical_bundle,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+        if not bundle_hash or bundle_hash!=computed_bundle: raise SystemExit('DENY: runtime bundle hash mismatch')
+        if vr.get('target_hash')!=bundle_hash: raise SystemExit('DENY: validation bundle hash mismatch')
+    else:
+        if vr.get('target_hash')!=content_hash: raise SystemExit('DENY: validation target hash mismatch')
+        if vr.get('target') not in (rel,src,os.path.abspath(src)): raise SystemExit('DENY: validation target mismatch')
+
+    event=learning_event(project,eid)
+    canonical=event.get('canonical_pattern_id')
+    pid='PROMO-'+uuid.uuid4().hex[:12]
+    status='PROMOTED'; errors=[]; targets=[]; skill_id=None; sync=None
+
+    lock_paths=sorted([
+      os.path.join(project,'docs','learning','.promotion-global.lock'),
+      os.path.join(template,'docs','governance','.template-promotion.lock')
+    ])
+    locks=[FileLock(p,'promotion-gateway',timeout=15,stale_after=60) for p in lock_paths]
+    for l in locks: l.acquire()
+    try:
+        # Atomic stale preflight under the shared Template Promotion Lock.
+        stale_preflight(project,template)
+
+        # Dual-target content write.
+        for item in files:
+            item_rel=item['relative_path']; item_src=item['content_file']
+            for label,rr in [('project',project),('template',template)]:
+                try:
+                    dest=os.path.join(rr,item_rel); os.makedirs(os.path.dirname(dest),exist_ok=True)
+                    if os.path.abspath(item_src)!=os.path.abspath(dest): shutil.copy2(item_src,dest)
+                    targets.append((label,dest))
+                except Exception as ex:
+                    status='PARTIAL'; errors.append(label+':'+item_rel+':'+repr(ex))
+
+        if status=='PROMOTED' and typ=='SKILL':
+            meta=req.get('skill_registration')
+            if not isinstance(meta,dict):
+                status='PARTIAL'; errors.append('skill_registration metadata missing')
+            else:
+                tv=json.load(open(os.path.join(template,'docs','governance','TEMPLATE_VERSION.yaml'),encoding='utf-8'))
+                next_version=bump_preview(tv['template_version'])
+                o=origin(project)
+                meta={
+                  **meta,
+                  'path':rel,
+                  'source_canonical_pattern_id':canonical,
+                  'source_project_id':o.get('project_id'),
+                  'source_learning_event_id':eid
+                }
+                try:
+                    token=issue_internal('REGISTER_SKILL',{
+                      'promotion_id':pid,
+                      'validation_receipt_id':rid,
+                      'content_hash':content_hash,
+                      'actor_dispatch_id':a.dispatch_id
+                    },ttl_seconds=30)
+                except Exception as ex:
+                    status='PARTIAL'; errors.append('internal-capability:'+str(ex))
+                if status=='PROMOTED':
+                    reg=os.path.join(os.path.dirname(os.path.abspath(__file__)),'register-skill')
+                    rr=subprocess.run(
+                      [sys.executable,'-S',reg,
+                       '--project-root',project,'--template-root',template,
+                       '--promotion-id',pid,'--actor-dispatch-id',a.dispatch_id,
+                       '--validation-receipt-id',rid,'--target-template-version',next_version,
+                       '--content-hash',content_hash,'--internal-token',token,
+                       '--registration-json',json.dumps(meta,ensure_ascii=False)],
+                      capture_output=True,text=True,timeout=20)
+                    if rr.returncode!=0:
+                        status='PARTIAL'; errors.append('register-skill:'+rr.stderr.strip())
+                    else:
+                        skill_id=json.loads(rr.stdout).get('skill_id')
+                        sync_pattern(project,template,canonical,'SKILL:'+str(skill_id))
+        elif status=='PROMOTED':
+            sync_pattern(project,template,canonical,typ+':'+rel)
+
+        if status=='PROMOTED':
+            ts=os.path.join(os.path.dirname(os.path.abspath(__file__)),'template-sync')
+            try:
+                ts_token=issue_internal('TEMPLATE_SYNC',{
+                  'template_root':template,
+                  'promotion_id':pid,
+                  'initialize':False,
+                  'caller_holds_template_lock':True,
+                  'delivery_version':None
+                },ttl_seconds=30)
+            except Exception as ex:
+                status='PARTIAL'; errors.append('template-sync-capability:'+str(ex))
+            if status=='PROMOTED':
+                rr=subprocess.run(
+                  [sys.executable,'-S',ts,'--template-root',template,'--promotion-id',pid,
+                   '--caller-holds-template-lock','--internal-token',ts_token],
+                  capture_output=True,text=True,timeout=30)
+                if rr.returncode!=0:
+                    status='PARTIAL'; errors.append('template-sync:'+rr.stderr.strip())
+                else:
+                    sync=json.loads(rr.stdout)
+
+        if status=='PROMOTED':
+            try: update_applied(project,template,sync,pid)
+            except Exception as ex:
+                status='PARTIAL'; errors.append('applied-sync:'+repr(ex))
+
+        receipt={
+          'promotion_id':pid,'learning_event_id':eid,'canonical_pattern_id':canonical,
+          'actor_dispatch_id':a.dispatch_id,'actor_worker_id':ident.get('worker_id'),'actor_role':role,
+          'validation_receipt_id':rid,'validation_scope':required_scope,'change_type':typ,'skill_id':skill_id,
+          'approval_id':approval_id,'current_project_target':project,'template_target':template,'relative_path':rel,
+          'promoted_files':[x['relative_path'] for x in files], 'bundle_hash':bundle_hash,
+          'project_hash_after':next((fh(p) for l,p in targets if l=='project'),None),
+          'template_hash_after':next((fh(p) for l,p in targets if l=='template'),None),
+          'promoted_at':datetime.now(timezone.utc).isoformat(),'status':status,
+          'errors':errors,'template_sync':sync,'stale_preflight':'CURRENT'
+        }
+        append_locked(os.path.join(project,'docs','learning','PROMOTION_LOG.jsonl'),receipt,'promotion-log')
+        update_queue(project,{'learning_event_id':eid,'canonical_pattern_id':canonical,'status':status,
+                              'promotion_id':pid,'resolution_reason':'dual-target promotion result'},'promotion-gateway')
+        if status=='PROMOTED':
+            consume_validation(vledger,rid,pid)
+            if typ in HUMAN_GATED: validate_user_approval(project,approval_id,project_origin.get('project_id'),approved_template_version,approved_manifest_hash,consume=True)
+    finally:
+        for l in reversed(locks): l.release()
+
+    print(json.dumps(receipt,ensure_ascii=False))
+    if status!='PROMOTED': sys.exit(4)
+
+if __name__=='__main__': main()

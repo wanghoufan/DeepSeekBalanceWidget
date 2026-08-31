@@ -1,0 +1,166 @@
+schema_version: 2.3.1
+authoritative: true
+source_of_truth: docs/model/MODEL_ROUTING_REGISTRY.yaml
+go_policy:
+  scheme: B
+  default: DENY_NON_TASK_MANAGER
+  task_manager_pool: OPENCODE_GO
+  override:
+    required:
+    - trusted_user_approval_receipt
+    - specific_task_id
+    - specific_dispatch_id
+    - one_shot
+    auto_revert: DENY_AFTER_USE
+    task_manager_may_issue_receipt: false
+resource_pools:
+  OPENCODE_GO:
+    purpose: CONTROL_PLANE_RESERVE
+    default_roles:
+    - task-manager
+    external_maintenance_allowed: false
+  OPENCODE_FREE:
+    purpose: LOW_COST_EXECUTION
+    policy: FREE_FIRST_WHEN_CAPABILITY_AND_QUALIFICATION_ARE_SUFFICIENT
+  GPT_PRO:
+    purpose: PROFESSIONAL_EXECUTION
+    accounts: 2
+    policy: USE_APPROVED_PRODUCTION_MODELS_WITHOUT_CONSUMING_CONTROL_PLANE_GO
+role_pool_policy:
+  task-manager:
+    allowed_pools:
+    - OPENCODE_GO
+    required_capabilities:
+    - vision
+    - long_context
+    - tool_calling
+    - orchestration
+  planner:
+    allowed_pools:
+    - OPENCODE_FREE
+    - GPT_PRO
+  builder:
+    allowed_pools:
+    - OPENCODE_FREE
+    - GPT_PRO
+  code-reviewer:
+    allowed_pools:
+    - OPENCODE_FREE
+    - GPT_PRO
+  qa:
+    allowed_pools:
+    - OPENCODE_FREE
+    - GPT_PRO
+  product-reviewer:
+    allowed_pools:
+    - OPENCODE_FREE
+    - GPT_PRO
+  experience-recorder:
+    allowed_pools:
+    - OPENCODE_FREE
+    - GPT_PRO
+  neat-freak:
+    allowed_pools:
+    - OPENCODE_FREE
+    - GPT_PRO
+current_production_mappings:
+  task-manager:
+    model_ref: opencode-go/mimo-v2.5
+    effort: null
+    note: Go套餐，不可改变
+  builder-junior:
+    model_ref: codex/gpt-5.6-luna
+    effort: medium
+    note: 初级开发（Terra API不可用，暂用Luna）
+  builder-senior:
+    model_ref: codex/gpt-5.6-sol
+    effort: medium
+    note: 高级开发
+  code-reviewer:
+    model_ref: codex/gpt-5.6-luna
+    effort: medium
+    note: 代码审查（Terra API不可用，暂用Luna）
+  qa:
+    model_ref: codex/gpt-5.6-luna
+    effort: max
+    note: 测试验证
+  product-reviewer:
+    model_ref: opencode/muse-spark-1.2-contributor-free
+    effort: null
+    note: 产品验收，免费套餐
+  experience-recorder:
+    model_ref: opencode/muse-spark-1.2-contributor-free
+    effort: null
+    note: 经验记录，免费套餐
+  neat-freak:
+    model_ref: opencode/nemotron-3-ultra-free
+    effort: null
+    note: 收尾整理，免费套餐
+models:
+- model_ref: opencode-go/mimo-v2.5
+  display_name: MiMo V2.5 Go
+  provider: OpenCode Go
+  model_id: mimo-v2.5
+  resource_pool: OPENCODE_GO
+  status: PRODUCTION
+  role_fit:
+  - task-manager
+  forbidden_roles: []
+  capabilities_required_by_mapping:
+  - vision
+  - long_context
+  - tool_calling
+  last_verified: null
+  quota_rate_limit_notes: Maintained by External Desktop Maintenance Plane from verified
+    sources.
+  known_issues: []
+- model_ref: codex/gpt-5.6-sol
+  display_name: GPT-5.6 Sol
+  provider: Codex / GPT Pro
+  model_id: gpt-5.6-sol
+  resource_pool: GPT_PRO
+  status: PRODUCTION
+  role_fit:
+  - senior-expert
+  - builder-escalation
+  - investigation-escalation
+  - review-escalation
+  forbidden_roles:
+  - task-manager-default
+  - routine-qa
+  last_verified: null
+  known_issues: []
+- model_ref: codex/gpt-5.6-luna
+  display_name: GPT-5.6 Luna
+  provider: GPT Pro
+  model_id: gpt-5.6-luna
+  resource_pool: GPT_PRO
+  status: PRODUCTION
+  role_fit:
+  - builder-junior
+  - code-reviewer
+  - qa
+  last_verified: null
+  known_issues:
+  - Terra API不可用，暂用Luna。
+- model_ref: opencode/muse-spark-1.2-contributor-free
+  display_name: Muse Spark 1.2 Contributor Free
+  provider: OpenCode
+  model_id: muse-spark-1.2-contributor-free
+  resource_pool: OPENCODE_FREE
+  status: PRODUCTION
+  role_fit:
+  - product-reviewer
+  - experience-recorder
+  last_verified: null
+  known_issues: []
+- model_ref: opencode/nemotron-3-ultra-free
+  display_name: Nemotron 3 Ultra Free
+  provider: OpenCode
+  model_id: nemotron-3-ultra-free
+  resource_pool: OPENCODE_FREE
+  status: PRODUCTION
+  role_fit:
+  - neat-freak
+  last_verified: null
+  known_issues: []

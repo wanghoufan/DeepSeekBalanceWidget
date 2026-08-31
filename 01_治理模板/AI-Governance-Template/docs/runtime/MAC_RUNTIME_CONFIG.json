@@ -1,0 +1,86 @@
+{
+  "schema_version": "1.0",
+  "runtime_id": "MAC_RUNTIME_V1",
+  "target_os": "macOS",
+  "status": "IMPLEMENTED_UNVERIFIED",
+  "adapter_version": "1.0.0",
+  "first_phase_only": true,
+  "deferred_adapters": [
+    "windows",
+    "wsl"
+  ],
+  "executables": {
+    "orca": "orca",
+    "opencode": "opencode",
+    "codex": "codex"
+  },
+  "internal_secret_env": "ORCA_GOVERNANCE_INTERNAL_SECRET",
+  "orchestration": {
+    "require_version_matched_skill_guide": true,
+    "required_commands": [
+      "run-create",
+      "task-create",
+      "dispatch",
+      "check",
+      "worker_done"
+    ]
+  },
+  "opencode": {
+    "auto_mode_required": true,
+    "task_manager_model": "opencode/big-pickle",
+    "permission_schema": "DETECT_FROM_INSTALLED_VERSION_AND_CANARY",
+    "task_manager_profile_v1": "scripts/runtime/macos/opencode-profiles/task-manager-v1.json",
+    "task_manager_profile_v2": "scripts/runtime/macos/opencode-profiles/task-manager-v2.json",
+    "non_task_manager_go_default": "DENY"
+  },
+  "codex": {
+    "banned_flags": [
+      "--full-auto",
+      "--dangerously-bypass-approvals-and-sandbox",
+      "--yolo",
+      "--approve-for-me",
+      "--not-so-yolo",
+      "--dangerously-bypass-hook-trust"
+    ],
+    "profiles": {
+      "builder": {
+        "sandbox": "workspace-write",
+        "approval": "on-request"
+      },
+      "planner": {
+        "sandbox": "read-only",
+        "approval": "never"
+      },
+      "code-reviewer": {
+        "sandbox": "read-only",
+        "approval": "never"
+      },
+      "qa": {
+        "sandbox": "read-only",
+        "approval": "never"
+      },
+      "product-reviewer": {
+        "sandbox": "read-only",
+        "approval": "never"
+      },
+      "experience-recorder": {
+        "sandbox": "read-only",
+        "approval": "never"
+      },
+      "neat-freak": {
+        "sandbox": "workspace-write",
+        "approval": "on-request"
+      }
+    }
+  },
+  "verification_required": [
+    "runtime-health-check",
+    "negative-canary",
+    "positive-contract",
+    "full-cross-project-learning-loop",
+    "migration-audit"
+  ],
+  "verified_at": null,
+  "delivery_version": "V1.10",
+  "template_version": "2.3.1-template.4"
+}

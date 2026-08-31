@@ -1,0 +1,219 @@
+{
+  "schema_version": "2.3.1-self-learning-final",
+  "authoritative": true,
+  "source_of_truth": "docs/learning/LEARNING_PATTERN_REGISTRY.yaml",
+  "patterns": {
+    "TM_CONTINUATION": {
+      "canonical_id": "TM_CONTINUATION",
+      "aliases": [
+        "TM_CONTINUE_UNTIL_P0",
+        "TM_DO_NOT_STOP",
+        "TASK_MANAGER_CONTINUATION",
+        "TM_CONTINUE_UNTIL_TASK_OR_P0_DONE"
+      ],
+      "category": "GUARD_BEHAVIOR",
+      "preferred_resolution": "GUARD_RULE",
+      "occurrences": 0,
+      "first_seen": null,
+      "last_seen": null,
+      "current_enforcement": "CONTINUATION_GUARD",
+      "last_enforcement_change": null,
+      "recurrence_after_enforcement": 0,
+      "effectiveness": "UNKNOWN"
+    },
+    "TM_BUSINESS_WRITE_BOUNDARY": {
+      "canonical_id": "TM_BUSINESS_WRITE_BOUNDARY",
+      "aliases": [
+        "TM_MUST_NOT_EDIT_BUSINESS_CODE",
+        "TM_NO_BUSINESS_WRITE"
+      ],
+      "category": "PERMISSION_BEHAVIOR",
+      "preferred_resolution": "TOOL_CONSTRAINT",
+      "occurrences": 0,
+      "first_seen": null,
+      "last_seen": null,
+      "current_enforcement": "PERMISSION_MATRIX",
+      "last_enforcement_change": null,
+      "recurrence_after_enforcement": 0,
+      "effectiveness": "UNKNOWN"
+    },
+    "TM_DISPATCH_GATEWAY": {
+      "canonical_id": "TM_DISPATCH_GATEWAY",
+      "aliases": [
+        "TM_MUST_USE_DISPATCH_GATEWAY",
+        "TM_NO_RAW_LAUNCH"
+      ],
+      "category": "GUARD_BEHAVIOR",
+      "preferred_resolution": "TOOL_CONSTRAINT",
+      "occurrences": 0,
+      "first_seen": null,
+      "last_seen": null,
+      "current_enforcement": "DISPATCH_GATEWAY",
+      "last_enforcement_change": null,
+      "recurrence_after_enforcement": 0,
+      "effectiveness": "UNKNOWN"
+    },
+    "HANDOFF_REQUIRED": {
+      "canonical_id": "HANDOFF_REQUIRED",
+      "aliases": [
+        "HANDOFF_MUST_BE_CREATED",
+        "RESUME_CAPSULE_REQUIRED"
+      ],
+      "category": "WORKFLOW",
+      "preferred_resolution": "TEMPLATE",
+      "occurrences": 0,
+      "first_seen": null,
+      "last_seen": null,
+      "current_enforcement": "HANDOFF_WORKFLOW",
+      "last_enforcement_change": null,
+      "recurrence_after_enforcement": 0,
+      "effectiveness": "UNKNOWN"
+    },
+    "UI_SCREENSHOT_FEEDBACK": {
+      "canonical_id": "UI_SCREENSHOT_FEEDBACK",
+      "aliases": [
+        "SCREENSHOT_FEEDBACK_FLOW",
+        "UI_FEEDBACK_SCREENSHOT",
+        "SCREENSHOT_PRODUCT_FEEDBACK"
+      ],
+      "category": "REUSABLE_SOP",
+      "preferred_resolution": "SKILL",
+      "occurrences": 0,
+      "first_seen": null,
+      "last_seen": null,
+      "current_enforcement": "NONE",
+      "last_enforcement_change": null,
+      "recurrence_after_enforcement": 0,
+      "effectiveness": "UNKNOWN"
+    },
+    "OPEN_CODE_RUN_HELP_CAPABILITY_DETECTION": {
+      "canonical_id": "OPEN_CODE_RUN_HELP_CAPABILITY_DETECTION",
+      "aliases": [
+        "OPENCODE_AUTO_FLAG_DETECTION",
+        "OPENCODE_RUN_HELP"
+      ],
+      "category": "RUNTIME_COMPATIBILITY",
+      "preferred_resolution": "RUNTIME_CONTRACT",
+      "occurrences": 1,
+      "first_seen": "2026-08-29",
+      "last_seen": "2026-08-29",
+      "current_enforcement": "RUNTIME_HEALTH_CHECK",
+      "last_enforcement_change": "2026-08-29",
+      "recurrence_after_enforcement": 0,
+      "effectiveness": "VERIFIED"
+    },
+    "ORCA_TERMINAL_HANDLE_REACQUIRE_AFTER_LAUNCH": {
+      "canonical_id": "ORCA_TERMINAL_HANDLE_REACQUIRE_AFTER_LAUNCH",
+      "aliases": [
+        "TERMINAL_HANDLE_STALE",
+        "ORCA_ACTIVE_HANDLE"
+      ],
+      "category": "RUNTIME_CONTRACT",
+      "preferred_resolution": "LAUNCHER_GUARD",
+      "occurrences": 1,
+      "first_seen": "2026-08-29",
+      "last_seen": "2026-08-29",
+      "current_enforcement": "LAUNCH_OPENCODE",
+      "last_enforcement_change": "2026-08-29",
+      "recurrence_after_enforcement": 0,
+      "effectiveness": "VERIFIED"
+    },
+    "ORCA_RUN_TASK_DISPATCH_IDENTITY_BINDING": {
+      "canonical_id": "ORCA_RUN_TASK_DISPATCH_IDENTITY_BINDING",
+      "aliases": [
+        "ORCA_RESULT_ENVELOPE_IDENTITY",
+        "REQUEST_ID_IS_NOT_RESULT_ID"
+      ],
+      "category": "RUNTIME_CONTRACT",
+      "preferred_resolution": "CONTRACT_TEST",
+      "occurrences": 1,
+      "first_seen": "2026-08-29",
+      "last_seen": "2026-08-29",
+      "current_enforcement": "DISPATCH_WORKER_AND_RESULT_PARSER",
+      "last_enforcement_change": "2026-08-29",
+      "recurrence_after_enforcement": 0,
+      "effectiveness": "VERIFIED"
+    },
+    "ORCA_OPEN_CODE_TRACKED_DISPATCH_TERMINAL_DELIVERY": {
+      "canonical_id": "ORCA_OPEN_CODE_TRACKED_DISPATCH_TERMINAL_DELIVERY",
+      "aliases": [
+        "OPENCODE_DIRECT_INJECT_UNSUPPORTED",
+        "TRACKED_TERMINAL_DELIVERY"
+      ],
+      "category": "RUNTIME_COMPATIBILITY",
+      "preferred_resolution": "LAUNCHER_COMPATIBILITY",
+      "occurrences": 1,
+      "first_seen": "2026-08-29",
+      "last_seen": "2026-08-29",
+      "current_enforcement": "LAUNCH_OPENCODE",
+      "last_enforcement_change": "2026-08-29",
+      "recurrence_after_enforcement": 0,
+      "effectiveness": "VERIFIED"
+    },
+    "WORKER_COMPLETION_TERMINAL_IDLE_NOT_CLOSE": {
+      "canonical_id": "WORKER_COMPLETION_TERMINAL_IDLE_NOT_CLOSE",
+      "aliases": [
+        "TERMINAL_CLOSE_INVALID_COMPLETION",
+        "TERMINAL_IDLE_COMPLETION"
+      ],
+      "category": "RUNTIME_CONTRACT",
+      "preferred_resolution": "CONTRACT_TEST",
+      "occurrences": 1,
+      "first_seen": "2026-08-29",
+      "last_seen": "2026-08-29",
+      "current_enforcement": "POSITIVE_CONTRACT",
+      "last_enforcement_change": "2026-08-29",
+      "recurrence_after_enforcement": 0,
+      "effectiveness": "VERIFIED"
+    },
+    "NEW_PATTERN_2D974B709D3422C6": {
+      "canonical_id": "NEW_PATTERN_2D974B709D3422C6",
+      "aliases": [
+        "ORCA_MACOS_SANDBOX_RUNTIME_FALSE_NEGATIVE"
+      ],
+      "category": "RUNTIME_COMPATIBILITY",
+      "preferred_resolution": "TEMPLATE",
+      "occurrences": 1,
+      "first_seen": "2026-08-30T05:36:26.449055+00:00",
+      "last_seen": "2026-08-30T05:36:26.449055+00:00",
+      "machine_enforceable": null,
+      "stable_multistep_sop": null,
+      "current_enforcement": "NONE",
+      "last_enforcement_change": null,
+      "recurrence_after_enforcement": 0,
+      "effectiveness": "UNKNOWN",
+      "decision": "PENDING_CANDIDATE_REVIEW",
+      "status": "NEW_PATTERN_CANDIDATE",
+      "candidate_tokens": [
+        "ACCESS",
+        "AGENT",
+        "BOOTSTRAP",
+        "CAUSED",
+        "FALSE",
+        "IPC",
+        "LIST",
+        "MACOS",
+        "NEGATIVE",
+        "OBSERVATION",
+        "ORCA",
+        "ORDINARY",
+        "PASS",
+        "PROCESS",
+        "REACHABLE",
+        "READY",
+        "REPORTED",
+        "RETURNED",
+        "RUNTIME",
+        "SANDBOX",
+        "STALE",
+        "STATUS",
+        "TERMINAL",
+        "UNAVAILABLE",
+        "VISIBILITY",
+        "WHILE"
+      ],
+      "candidate_dedup_hits": 0,
+      "created_at": "2026-08-30T05:36:26.448148+00:00"
+    }
+  }
+}

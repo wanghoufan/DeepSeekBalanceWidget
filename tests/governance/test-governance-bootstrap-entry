@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+import importlib.util, importlib.machinery, os, pathlib, sys
+
+BASE=pathlib.Path(__file__).resolve().parents[2]
+
+def load(name, path):
+    loader=importlib.machinery.SourceFileLoader(name,str(path))
+    spec=importlib.util.spec_from_loader(name,loader)
+    mod=importlib.util.module_from_spec(spec); spec.loader.exec_module(mod); return mod
+
+gateway=load('promotion_gateway', BASE/'scripts/governance/promotion-gateway')
+internal=load('internal_capability', BASE/'scripts/governance/internal_capability.py')
+gw_text=(BASE/'scripts/governance/promotion-gateway').read_text(encoding='utf-8')
+ts_text=(BASE/'scripts/governance/template-sync').read_text(encoding='utf-8')
+approval_text=(BASE/'scripts/governance/record-user-approval').read_text(encoding='utf-8')
+validation_text=(BASE/'scripts/governance/write-validation-receipt').read_text(encoding='utf-8')
+
+# CASE 1: new type is explicitly human gated and has a narrow allowlist.
+assert 'GOVERNANCE_INFRASTRUCTURE_FIX' in gw_text and 'HUMAN_GATED' in gw_text
+assert gateway.safe_governance_infra_rel('scripts/governance/learning-gate')
+# CASE 2-4: approval, validation and bundle are mandatory.
+for needle in ['approval_id required','validation_receipt_id required','bundle hash mismatch']:
+    assert needle in gw_text
+# CASE 5-7: business paths, unsafe paths and stale templates fail closed.
+assert not gateway.safe_governance_infra_rel('src/app.py')
+assert not gateway.safe_governance_infra_rel('../scripts/governance/learning-gate')
+assert 'stale promotion preflight failed' in gw_text
+# CASE 8: one-shot replay is denied by the existing validator.
+assert 'approval receipt replay' in (BASE/'scripts/governance/validate-user-approval-receipt').read_text(encoding='utf-8')
+# CASE 9: Task Manager cannot promote.
+assert 'Task Manager cannot production-promote' in gw_text
+# CASE 10: Runtime adapter does not inherit governance-core access.
+assert not gateway.safe_runtime_rel('scripts/governance/promotion-gateway')
+# CASE 11-14: Trust Anchors are denied for both governance and runtime changes.
+for p in gateway.TRUST_ANCHOR_PATHS:
+    assert not gateway.safe_governance_infra_rel(p)
+    assert not gateway.safe_runtime_rel(p)
+# CASE 15: post-image and bundle bindings are explicit.
+for needle in ['post_change_file_hashes','bootstrap_bundle_hash','ephemeral_executor_sha256']:
+    assert needle in approval_text or needle in validation_text or needle in ts_text
+# CASE 16-18: one-shot, version and capability replay guards are explicit.
+assert 'bootstrap authority replay' in ts_text
+assert 'source version mismatch' in ts_text
+assert 'verify_and_consume' in ts_text
+# CASE 19: generic internal capability cannot mint bootstrap scopes.
+os.environ['ORCA_GOVERNANCE_INTERNAL_SECRET']='bootstrap-contract-test-secret-012345678901234567890'
+try:
+    internal.issue('BOOTSTRAP_TEMPLATE_SYNC', {'bootstrap_id':'TEST'})
+except RuntimeError:
+    pass
+else:
+    raise AssertionError('generic issue accepted bootstrap scope')
+# CASE 20-22: staging/QA/approval/executor bindings are required in the contract.
+for needle in ['staging_validation_result','validation_receipt_id','ephemeral_executor_sha256']:
+    assert needle in approval_text or needle in validation_text or needle in ts_text
+# CASE 23-24: evidence writer and ledger are protected from ordinary promotion payloads.
+assert 'scripts/governance/write-bootstrap-evidence' in gateway.TRUST_ANCHOR_PATHS
+assert 'BOOTSTRAP_HISTORY' in gw_text or 'BOOTSTRAP_HISTORY' in ts_text
+# CASE 25-27: append-only writer and hash-chain fields are explicit.
+writer=(BASE/'scripts/governance/write-bootstrap-evidence').read_text(encoding='utf-8')
+for needle in ['FileLock','record_hash','previous_record_hash',"'a'"]:
+    assert needle in writer
+
+print('PASS test-governance-bootstrap-entry (27/27 cases)')

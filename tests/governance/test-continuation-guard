@@ -1,0 +1,33 @@
+#!/usr/bin/env python3
+import json, os, subprocess, sys, tempfile
+S=os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..','scripts','governance','continuation-guard'))
+def dump(p,o): os.makedirs(os.path.dirname(p),exist_ok=True); json.dump(o,open(p,'w'))
+def run(d,r): return subprocess.run([sys.executable,'-S',S,'--repo-root',d],input=json.dumps(r),text=True,capture_output=True)
+with tempfile.TemporaryDirectory() as d:
+    os.makedirs(os.path.join(d,'docs','progress')); os.makedirs(os.path.join(d,'docs','runtime'))
+    open(os.path.join(d,'docs','progress','EVIDENCE.jsonl'),'w').close()
+    dump(os.path.join(d,'docs','runtime','runtime-health.json'),{'components':{}})
+    dump(os.path.join(d,'docs','progress','governance-state.yaml'),{'commit_sha':'C1','current_task_id':'T1','stage_p0':[{'p0_id':'P1','status':'INCOMPLETE'}]})
+    rt={'current_task_id':'T1','current_task_status':'ACTIVE','active_human_gate':False,'fix_budget_exhausted':False,
+        'external_blocker':{'active':False,'no_verified_fallback':False},'safety_block':{'active':False},'trusted_user_session_pause':False}
+    dump(os.path.join(d,'docs','runtime','task-runtime.json'),rt)
+    assert run(d,{'current_p0_status':'COMPLETE','current_task_status':'COMPLETE','stop_requested':True,'stop_reason':'GOAL_COMPLETE'}).returncode==2
+
+    dump(os.path.join(d,'docs','progress','governance-state.yaml'),{'commit_sha':'C1','current_task_id':'T1','stage_p0':[{'p0_id':'P1','status':'COMPLETE'}]})
+    assert run(d,{'stop_requested':True,'stop_reason':'GOAL_COMPLETE'}).returncode==2
+
+    dump(os.path.join(d,'docs','progress','governance-state.yaml'),{'commit_sha':'C1','current_task_id':'T1','stage_p0':[{'p0_id':'P1','status':'INCOMPLETE'}]})
+    r=run(d,{'stop_requested':False,'next_action':None}); assert r.returncode==3 and 'NEXT_ACTION_REQUIRED' in r.stdout
+
+    rt['active_human_gate']=True; dump(os.path.join(d,'docs','runtime','task-runtime.json'),rt)
+    r=run(d,{'stop_requested':True}); assert r.returncode==0 and 'HUMAN_GATE' in r.stdout
+
+    rt['active_human_gate']=False; rt['current_task_status']='COMPLETED'; dump(os.path.join(d,'docs','runtime','task-runtime.json'),rt)
+    dump(os.path.join(d,'docs','progress','governance-state.yaml'),{'commit_sha':'C1','current_task_id':'T1','stage_p0':[{'p0_id':'P1','status':'COMPLETE'}]})
+    open(os.path.join(d,'docs','progress','EVIDENCE.jsonl'),'w').write(json.dumps({'task_id':'T1','commit_sha':'C1','result':'PASS'})+'\n')
+    r=run(d,{'stop_requested':True}); assert r.returncode==0 and 'GOAL_COMPLETE_TRUSTED' in r.stdout
+
+    rt['trusted_user_session_pause']=True; rt['current_task_status']='ACTIVE'; dump(os.path.join(d,'docs','runtime','task-runtime.json'),rt)
+    dump(os.path.join(d,'docs','progress','governance-state.yaml'),{'commit_sha':'C1','current_task_id':'T1','stage_p0':[{'p0_id':'P1','status':'INCOMPLETE'}]})
+    r=run(d,{}); assert r.returncode==0 and 'SUSPEND_ALLOWED' in r.stdout
+print('PASS test-continuation-guard')

@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+import argparse, hashlib, json, os, shutil
+from datetime import datetime, timezone
+
+SKIP={
+ 'README.md',
+ 'docs/governance/TEMPLATE_VERSION.yaml',
+ 'docs/governance/TEMPLATE_MANIFEST.json',
+ 'docs/governance/PROJECT_GOVERNANCE_ORIGIN.template.yaml',
+ 'docs/governance/PROJECT_GOVERNANCE_APPLIED.template.yaml',
+ 'docs/runtime/macos-runtime-health.json'
+}
+def h(p):
+    x=hashlib.sha256()
+    with open(p,'rb') as f:
+        for c in iter(lambda:f.read(65536),b''): x.update(c)
+    return x.hexdigest()
+def skip(rel):
+    return rel in SKIP or rel.startswith('template-meta/') or '__pycache__/' in rel or rel.endswith('.pyc') or rel.endswith('.lock')
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--template-root',required=True)
+    ap.add_argument('--project-root',required=True)
+    ap.add_argument('--project-id',required=True)
+    ap.add_argument('--repo-id',required=True)
+    a=ap.parse_args()
+    tr=os.path.abspath(a.template_root); pr=os.path.abspath(a.project_root)
+    vp=os.path.join(tr,'docs','governance','TEMPLATE_VERSION.yaml')
+    mp=os.path.join(tr,'docs','governance','TEMPLATE_MANIFEST.json')
+    v=json.load(open(vp,encoding='utf-8')); m=json.load(open(mp,encoding='utf-8'))
+    if m.get('template_version')!=v.get('template_version'):
+        raise SystemExit('BOOTSTRAP DENY: Version/Manifest mismatch')
+    bad=[]
+    for e in m.get('files',[]):
+        p=os.path.join(tr,e['path'])
+        if not os.path.isfile(p) or os.path.getsize(p)!=e['size'] or h(p)!=e['sha256']:
+            bad.append(e['path'])
+    if bad: raise SystemExit('BOOTSTRAP DENY: Manifest invalid '+','.join(bad[:5]))
+
+    os.makedirs(pr,exist_ok=True); copied=[]
+    for dp,dirs,fns in os.walk(tr):
+        dirs[:]=[d for d in dirs if d!='__pycache__']
+        for fn in fns:
+            src=os.path.join(dp,fn); rel=os.path.relpath(src,tr).replace('\\','/')
+            if skip(rel): continue
+            dst=os.path.join(pr,rel)
+            if os.path.exists(dst): raise SystemExit('BOOTSTRAP DENY: target exists '+rel)
+            os.makedirs(os.path.dirname(dst),exist_ok=True)
+            shutil.copy2(src,dst); copied.append(rel)
+
+    now=datetime.now(timezone.utc).isoformat(); mh=h(mp)
+    origin={
+      'schema_version':'4','project_id':a.project_id,'repo_id':a.repo_id,
+      'origin_template_version':v['template_version'],
+      'origin_manifest_hash':mh,
+      'origin_fingerprint':m['template_fingerprint'],
+      'created_at':now
+    }
+    applied={
+      'schema_version':'4','project_id':a.project_id,
+      'current_applied_template_version':v['template_version'],
+      'current_applied_manifest_hash':mh,
+      'current_applied_fingerprint':m['template_fingerprint'],
+      'last_promotion_id':v.get('last_promotion_id'),
+      'updated_at':now,'pin':None
+    }
+    gd=os.path.join(pr,'docs','governance'); os.makedirs(gd,exist_ok=True)
+    with open(os.path.join(gd,'PROJECT_GOVERNANCE_ORIGIN.yaml'),'w',encoding='utf-8') as f:
+        json.dump(origin,f,ensure_ascii=False,indent=2); f.write('\n')
+    with open(os.path.join(gd,'PROJECT_GOVERNANCE_APPLIED.yaml'),'w',encoding='utf-8') as f:
+        json.dump(applied,f,ensure_ascii=False,indent=2); f.write('\n')
+    shutil.copy2(mp,os.path.join(gd,'PROJECT_GOVERNANCE_APPLIED_MANIFEST.json'))
+
+    reg=os.path.join(pr,'docs','learning','SKILL_REGISTRY.yaml'); missing=[]
+    if os.path.isfile(reg):
+        for s in json.load(open(reg,encoding='utf-8')).get('skills',[]):
+            if s.get('status')=='PRODUCTION' and not os.path.exists(os.path.join(pr,s.get('path',''))):
+                missing.append(s.get('skill_id'))
+    if missing: raise SystemExit('BOOTSTRAP DENY: Production Skill files missing '+','.join(missing))
+
+    print(json.dumps({
+      'bootstrap':'PASS','template_version':v['template_version'],
+      'template_fingerprint':m['template_fingerprint'],
+      'copied_files':len(copied),
+      'origin':os.path.join(gd,'PROJECT_GOVERNANCE_ORIGIN.yaml'),
+      'applied':os.path.join(gd,'PROJECT_GOVERNANCE_APPLIED.yaml'),
+      'applied_manifest':os.path.join(gd,'PROJECT_GOVERNANCE_APPLIED_MANIFEST.json')
+    },ensure_ascii=False))
+if __name__=='__main__': main()

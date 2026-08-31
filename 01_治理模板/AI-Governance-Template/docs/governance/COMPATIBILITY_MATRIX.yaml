@@ -1,0 +1,63 @@
+{
+  "schema_version": "2.3.1-mac-first",
+  "authoritative": true,
+  "source_of_truth": "docs/governance/COMPATIBILITY_MATRIX.yaml",
+  "last_maintained_at": "2026-08-29T04:34:05.925558+00:00",
+  "implementation_strategy": "MAC_FIRST_THEN_WINDOWS_WSL",
+  "environment": {
+    "phase_1": {
+      "os": "macOS",
+      "runtime_id": "MAC_RUNTIME_V1",
+      "status": "VERIFIED"
+    },
+    "phase_2": {
+      "windows": "DEFERRED_UNTIL_MAC_VERIFIED",
+      "wsl": "DEFERRED_UNTIL_MAC_VERIFIED"
+    }
+  },
+  "components": {
+    "orca": {
+      "version": "1.4.190",
+      "verified_at": "2026-08-29T04:34:05.925558+00:00",
+      "runtime_health": "VERIFIED_ON_USER_MAC"
+    },
+    "opencode": {
+      "version": "1.18.25",
+      "permission_schema_version": null,
+      "verified_at": "2026-08-29T04:34:05.925558+00:00",
+      "runtime_health": "VERIFIED_ON_USER_MAC"
+    },
+    "codex": {
+      "version": "0.150.1",
+      "verified_at": "2026-08-29T04:34:05.925558+00:00",
+      "runtime_health": "VERIFIED_ON_USER_MAC"
+    }
+  },
+  "filesystem_phase_1": [
+    "POSIX_PATH",
+    "MAC_FILE_PERMISSIONS",
+    "SYMLINK",
+    "FILE_LOCK",
+    "ATOMIC_REPLACE"
+  ],
+  "deferred": [
+    "WINDOWS_PATH",
+    "POWERSHELL_PERMISSION_ADAPTER",
+    "WSL_PATH_BRIDGE",
+    "NTFS_SEMANTICS",
+    "WINDOWS_PROCESS_HANDLE",
+    "MULTI_OS_SIMULTANEOUS_CANARY"
+  ],
+  "contract_test_version": "v2.3.1-mac-runtime-2",
+  "mac_runtime_contracts": {
+    "opencode_capability_detection": "VERIFIED: opencode run --help",
+    "terminal_handle_reacquire_after_launch": "REQUIRED_AND_VERIFIED",
+    "run_task_dispatch_binding": "REQUIRED_AND_VERIFIED",
+    "request_id_as_result_identity": "INVALID",
+    "opencode_direct_inject": "UNSUPPORTED_CURRENTLY",
+    "opencode_terminal_delivery": "VERIFIED",
+    "completion_on_terminal_close": "INVALID",
+    "completion_on_dispatch_result_and_terminal_idle": "VERIFIED"
+  },
+  "known_issues": []
+}
