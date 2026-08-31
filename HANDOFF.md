@@ -37,12 +37,8 @@
 
 ## 未完成/需改进
 
-### P0（必须修）
-1. ❌ DS 块间距偏大：`MiniDeepSeekBlock` Border 已移除 Width，但可能仍需微调 Padding
-2. ❌ 按钮"关闭"被截断：所有按钮 Width 需增加到 56-60px，MiniButtonBar Width 增加到 230
-
 ### P1（后续补）
-3. ❌ macOS OpenRouter 卡片未添加到 SettingsWindow
+1. ❌ macOS OpenRouter 卡片未添加到 SettingsWindow
 
 ## 下次恢复开发提示词
 
