@@ -48,11 +48,9 @@
 读取 HANDOFF.md 了解当前状态和遗留问题。
 
 本次需要完成：
-1. 检查 DS 块间距是否合适，如不合适微调 Padding
-2. 检查按钮"关闭"是否被截断，如截断增加 Width
-3. macOS OpenRouter 卡片添加到 SettingsWindow
-4. 全部完成后走 QA → Product Review 流程
-5. 更新 CHANGELOG.md 并 git commit + push
+1. macOS OpenRouter 卡片添加到 SettingsWindow
+2. 全部完成后走 QA → Product Review 流程
+3. 更新 CHANGELOG.md 并 git commit + push
 
 模型分工（已写入 MODEL_ROUTING_REGISTRY.yaml）：
 - 初级 Builder: codex/gpt-5.6-luna (medium)
