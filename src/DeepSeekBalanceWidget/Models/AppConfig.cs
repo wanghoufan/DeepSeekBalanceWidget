@@ -94,11 +94,11 @@ public sealed class AppConfig
 
     public double CodexFontSize { get; set; } = 14;
     public string CodexFontStyle { get; set; } = "DeepSeek"; // DeepSeek / Regular / Bold
-    /// <summary>胶囊区块渲染顺序：deepseek / chatgpt / opencode / workbuddy（未来），可在设置中调整。</summary>
-    public List<string> AgentOrder { get; set; } = new() { "deepseek", "chatgpt", "opencode" };
+    /// <summary>胶囊区块渲染顺序：deepseek / chatgpt / opencode / openrouter / workbuddy，可在设置中调整。</summary>
+    public List<string> AgentOrder { get; set; } = new() { "deepseek", "chatgpt", "opencode", "openrouter" };
 
     /// <summary>
-    /// 加载后归一化：旧配置的 AgentOrder 缺 opencode 时补到末尾，
+    /// 加载后归一化：旧配置的 AgentOrder 缺 opencode/openrouter 时补到末尾，
     /// 使升级用户无需手动调整即可看到新区块。
     /// </summary>
     public void Normalize()
@@ -134,8 +134,9 @@ public sealed class AppConfig
 
         AgentOrder ??= new List<string>();
         if (AgentOrder.Count == 0)
-            AgentOrder.AddRange(new[] { "deepseek", "chatgpt", "opencode" });
+            AgentOrder.AddRange(new[] { "deepseek", "chatgpt", "opencode", "openrouter" });
         if (!AgentOrder.Contains("opencode")) AgentOrder.Add("opencode");
+        if (!AgentOrder.Contains("openrouter")) AgentOrder.Add("openrouter");
     }
     public string DefaultCorner { get; set; } = "Remember"; // Remember / BottomRight / BottomLeft
     public bool ShowPeakIndicator { get; set; } = true;

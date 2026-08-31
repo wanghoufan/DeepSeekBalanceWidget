@@ -1,15 +1,15 @@
-# Handoff - 2026-08-31 16:10
+# Handoff - 2026-08-31 22:20
 
 > ⚠️ **仓库边界**：本仓库（`wanghoufan/DeepSeekBalanceWidget-Mac`）**只维护 macOS 端**。Windows（WPF）端已拆分为独立仓库。下文出现的 Windows / WPF 字样均为历史语境或构建环境限制说明，不代表本仓库目标平台。
 
 ## 当前状态
-- Stage: Widget Mac 端 UI 改造（已暂停）
-- 构建: 0 Error(s), 4 Warning(s)
-- App: `/Applications/DeepSeekBalanceWidget.app`
-- Git: 已提交并推送到 GitHub（bb0e57a）
-- 进程: 已全部停止
+- Stage: Widget Mac 端 OpenRouter 真实接入（已完成，待发布）
+- 构建: 0 Error(s), 0 Warning(s)（`dotnet build Mac.csproj --no-restore`），4 Warning(s)（完整 restore 含既有 Avalonia 警告）
+- App: `/Applications/DeepSeekBalanceWidget.app`（待重新打包）
+- Git: 待提交并推送（OpenRouter 真实接入 5 文件）
+- 进程: 待部署前 pkill -9 清理
 
-## 已完成功能（16项）
+## 已完成功能（17项）
 
 ### 核心功能
 1. ✅ DeepSeek 周末非高峰规则（PeakRange.WeekdaysOnly，2026-08-23 官方政策）
@@ -31,16 +31,23 @@
 13. ✅ 清除 Key 按钮移至输入旁 + 红色样式 + 二次确认
 14. ✅ 设置页 Apply 按钮（应用但不关闭）
 15. ✅ 高峰时段移至 DS 余额旁
-16. ✅ macOS 监测项独立开关（DS/GPT/OC/WB）
+16. ✅ macOS 监测项独立开关（DS/GPT/OC/WB/OR）
 
 ### 基础设施
 - ✅ resolve-model 脚本（模型路由解析）
 - ✅ MODEL_ROUTING_REGISTRY.yaml 已更新（8角色模型分工）
 
+### OpenRouter 真实接入（2026-08-31）
+17. ✅ OpenRouter 额度监测（`GET https://openrouter.ai/api/v1/credits`，需 Management Key）：`OpenRouterUsageProvider` 真实网络实现（Bearer 401/403/非2xx/网络异常/JsonException 分支，Timeout 15s，HttpClient 注入/Dispose 隔离），`OpenRouterUsageParser` 解析 `data.total_credits/total_usage`（number/string 兼容，负值 clamp），`OpenRouterUsageFormatter` 格式化；展开卡片 `OpenRouterPanel`（Row 4）与胶囊 `MiniOpenRouterBlock`（Column 3，24,34,52,34 单行：OR/剩余%/ $剩余/34px 三色进度条），`MainWindow` 新增 `_openRouterTimer/_openRouterProvider/_menuBarOpenRouterText` 及 `RefreshOpenRouterAsync/ApplyOpenRouterUsage/ClearOpenRouterRows` 全生命周期（OnOpened/Refresh/Settings/Visibility/OnClosing/MenuBar），`AppConfig.AgentOrder` 新增 `openrouter` 并 Normalize 补齐，`SettingsWindow` 卡片文案更新为“需 Management Key”。QA 19/19 harness PASS（空 key/401/403/429/网络/JSON/超时/Dispose/Order），Product PASS，`dotnet build` 0 Error。
+
 ## 未完成/需改进
 
-### P1（后续补）
-1. ❌ macOS OpenRouter 卡片未添加到 SettingsWindow
+### P1
+- 无（OpenRouter 已从预留升级为真实接入）
+
+### 后续可选
+- WorkBuddy 实际额度接入（仍为占位）
+- 打 `v*` tag 发布（需同步 `Mac.csproj` `<Version>` 与 `Info.plist` `CFBundleShortVersionString/CFBundleVersion` 及 README 下载表）
 
 ## 下次恢复开发提示词
 
@@ -49,10 +56,12 @@
 
 读取 HANDOFF.md 了解当前状态和遗留问题。
 
-本次需要完成：
-1. macOS OpenRouter 卡片添加到 SettingsWindow
-2. 全部完成后走 QA → Product Review 流程
-3. 更新 CHANGELOG.md 并 git commit + push
+当前已完成 OpenRouter 真实接入（QA + Product PASS，待 git 推送与 .app 重新打包）。
+
+下一步可选：
+1. pkill -9 清理旧进程 → ./scripts/publish-macos.sh arm64 → 安装到 /Applications 并验证
+2. 或择机打 v* tag 升版本发布（同步 Mac csproj / Info.plist / README 版本号）
+3. 或补齐 WorkBuddy 实际额度接入
 
 模型分工（已写入 MODEL_ROUTING_REGISTRY.yaml）：
 - 初级 Builder: codex/gpt-5.6-luna (medium)
@@ -72,11 +81,16 @@
 
 | 文件 | 说明 |
 |------|------|
-| `src/DeepSeekBalanceWidget.Mac/MainWindow.axaml` | 胶囊布局（DS/GPT/OC/按钮） |
-| `src/DeepSeekBalanceWidget.Mac/MainWindow.axaml.cs` | 业务逻辑（置顶/贴边/刷新/主题） |
-| `src/DeepSeekBalanceWidget.Mac/SettingsWindow.axaml` | 设置页（4标签） |
+| `src/DeepSeekBalanceWidget.Mac/MainWindow.axaml` | 胶囊布局（DS/GPT/OC/OR/按钮）Row 8 + Mini 5 列 |
+| `src/DeepSeekBalanceWidget.Mac/MainWindow.axaml.cs` | 业务逻辑（置顶/贴边/刷新/主题 + OpenRouter 完整链路） |
+| `src/DeepSeekBalanceWidget.Mac/SettingsWindow.axaml` | 设置页（4标签，OpenRouter 卡片 Row 4） |
 | `src/DeepSeekBalanceWidget.Mac/Services/MacAlarmSound.cs` | 11种声音合成 |
 | `src/DeepSeekBalanceWidget.Mac/ToastWindow.axaml` | 警报弹窗 |
+| `src/DeepSeekBalanceWidget/Services/OpenRouterUsageProvider.cs` | OpenRouter 真实 credits 请求（Bearer + 401/403/超时） |
+| `src/DeepSeekBalanceWidget/Services/OpenRouterUsageParser.cs` | 解析 `data.total_credits/total_usage` |
+| `src/DeepSeekBalanceWidget/Services/OpenRouterUsageFormatter.cs` | 格式化剩余/百分比 |
+| `src/DeepSeekBalanceWidget/Models/OpenRouterUsageSnapshot.cs` | 剩余% 与剩余金额计算 |
+| `src/DeepSeekBalanceWidget/Models/AppConfig.cs` | AgentOrder 含 openrouter + Normalize |
 | `src/DeepSeekBalanceWidget/Themes/Light.xaml` | 浅色主题资源 |
 | `src/DeepSeekBalanceWidget/Themes/Dark.xaml` | 暗色主题资源 |
 | `src/DeepSeekBalanceWidget/Services/ThemeService.cs` | 主题切换 |

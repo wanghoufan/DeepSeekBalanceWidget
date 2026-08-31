@@ -219,13 +219,13 @@
                 </StackPanel>
               </Border>
 
-              <!-- OpenRouter 卡片：预留入口，数据源尚未接入 -->
+              <!-- OpenRouter 卡片：已接入 openrouter.ai/api/v1/credits -->
               <Border Grid.Row="4" Grid.Column="0" Background="{DynamicResource SurfaceBrush}"
                       BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="16">
                 <StackPanel Spacing="6">
                   <CheckBox x:Name="EnableOpenRouterCheck" Content="OpenRouter 额度"
-                            FontSize="13" ToolTip.Tip="OpenRouter 额度数据源预留，接入完成后启用" />
-                  <TextBlock Classes="hint" Margin="22,-2,0,2" Text="账户额度监测（当前尚未接入）" />
+                            FontSize="13" ToolTip.Tip="读取 openrouter.ai 账户额度，需 Management Key" />
+                  <TextBlock Classes="hint" Margin="22,-2,0,2" Text="读取 openrouter.ai 账户额度（需 Management Key）" />
                   <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
                     <TextBox x:Name="OpenRouterKeyBox" Classes="input"
                              Watermark="留空会保留已保存的 Key" PasswordChar="●" />

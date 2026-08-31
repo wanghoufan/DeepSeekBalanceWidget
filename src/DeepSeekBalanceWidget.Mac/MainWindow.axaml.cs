@@ -38,11 +38,13 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _refreshTimer;
     private readonly DispatcherTimer _codexTimer;
     private readonly DispatcherTimer _openCodeTimer;
+    private readonly DispatcherTimer _openRouterTimer;
     private readonly DispatcherTimer _peakTimer;
     private readonly DispatcherTimer _positionSaveTimer;
     private readonly DispatcherTimer _autoHideTimer;
     private readonly ICodexAccountsUsageProvider _codexProvider = new MacCodexUsageProvider();
     private IOpenCodeUsageProvider _openCodeProvider;
+    private IOpenRouterUsageProvider _openRouterProvider;
     private readonly CancellationTokenSource _cancellation = new();
     private IBalanceProvider _provider;
     private MacMenuBarBalance? _menuBarBalance;
@@ -53,11 +55,14 @@ public partial class MainWindow : Window
     private string _menuBarCodexTooltip = "ChatGPT Plus：正在读取额度";
     private string _menuBarOpenCodeText = "--";
     private string _menuBarOpenCodeTooltip = "OpenCode Go：正在读取额度";
+    private string _menuBarOpenRouterText = "--";
+    private string _menuBarOpenRouterTooltip = "OpenRouter：正在读取额度";
     private string _menuBarPeakText = "谷";
     private decimal? _previousBalance;
     private bool _refreshing;
     private bool _codexRefreshing;
     private bool _openCodeRefreshing;
+    private bool _openRouterRefreshing;
     private bool _isMini;
     private bool _isDragging;
     private bool _isEdgeHidden;
@@ -85,6 +90,7 @@ public partial class MainWindow : Window
         _config = config;
         _provider = provider;
         _openCodeProvider = new OpenCodeUsageProvider(_configService.GetOpenCodeApiKey());
+        _openRouterProvider = new OpenRouterUsageProvider(_configService.GetOpenRouterApiKey());
 
         ApplyAlwaysOnTop(_config.IsAlwaysOnTop);
         _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(DeepSeekRefreshSeconds) };
@@ -93,6 +99,8 @@ public partial class MainWindow : Window
         _codexTimer.Tick += async (_, _) => await RefreshCodexAsync();
         _openCodeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(UsageRefreshSeconds) };
         _openCodeTimer.Tick += async (_, _) => await RefreshOpenCodeAsync();
+        _openRouterTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(UsageRefreshSeconds) };
+        _openRouterTimer.Tick += async (_, _) => await RefreshOpenRouterAsync();
         _peakTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(UsageRefreshSeconds) };
         _peakTimer.Tick += (_, _) => RefreshPeakStatus();
         _positionSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
@@ -134,9 +142,11 @@ public partial class MainWindow : Window
         _peakTimer.Start();
         if (_config.EnableCodexMonitoring) _codexTimer.Start();
         if (_config.EnableOpenCodeMonitoring) _openCodeTimer.Start();
+        if (_config.EnableOpenRouterMonitoring) _openRouterTimer.Start();
         if (_config.EnableDeepSeekMonitoring) _ = RefreshAsync();
         if (_config.EnableCodexMonitoring) _ = RefreshCodexAsync();
         if (_config.EnableOpenCodeMonitoring) _ = RefreshOpenCodeAsync();
+        if (_config.EnableOpenRouterMonitoring) _ = RefreshOpenRouterAsync();
         if (!_isRestoringFromDock) _autoHideTimer.Start();
         Debug.WriteLine($"[DockLifecycle] OnOpened exit visible={IsVisible} position={Position} restoring={_isRestoringFromDock}");
         Console.Error.WriteLine($"[DockLifecycle] OnOpened exit visible={IsVisible} position={Position} restoring={_isRestoringFromDock}");
@@ -226,10 +236,11 @@ public partial class MainWindow : Window
             ["deepseek"] = MiniDeepSeekBlock,
             ["chatgpt"] = MiniGptBlock,
             ["opencode"] = MiniOpenCodeBlock,
+            ["openrouter"] = MiniOpenRouterBlock,
             ["workbuddy"] = MiniWorkbuddyBlock
         };
         var order = (_config.AgentOrder ?? new List<string>())
-            .Concat(new[] { "deepseek", "chatgpt", "opencode", "workbuddy" })
+            .Concat(new[] { "deepseek", "chatgpt", "opencode", "openrouter", "workbuddy" })
             .Distinct(StringComparer.OrdinalIgnoreCase);
         int index = 0;
         foreach (string key in order)
@@ -245,14 +256,17 @@ public partial class MainWindow : Window
         BalancePanel.IsVisible = _config.EnableDeepSeekMonitoring;
         CodexPanel.IsVisible = _config.EnableCodexMonitoring;
         OpenCodePanel.IsVisible = _config.EnableOpenCodeMonitoring;
+        OpenRouterPanel.IsVisible = _config.EnableOpenRouterMonitoring;
         WorkbuddyPanel.IsVisible = _config.EnableWorkbuddyMonitoring;
         MiniDeepSeekBlock.IsVisible = _config.EnableDeepSeekMonitoring;
         MiniGptBlock.IsVisible = _config.EnableCodexMonitoring;
         MiniOpenCodeBlock.IsVisible = _config.EnableOpenCodeMonitoring;
+        MiniOpenRouterBlock.IsVisible = _config.EnableOpenRouterMonitoring;
         MiniWorkbuddyBlock.IsVisible = _config.EnableWorkbuddyMonitoring;
         _refreshTimer.IsEnabled = _config.EnableDeepSeekMonitoring;
         _codexTimer.IsEnabled = _config.EnableCodexMonitoring;
         _openCodeTimer.IsEnabled = _config.EnableOpenCodeMonitoring;
+        _openRouterTimer.IsEnabled = _config.EnableOpenRouterMonitoring;
         RearrangeMiniBlocks();
     }
 
@@ -261,6 +275,7 @@ public partial class MainWindow : Window
         if (_config.EnableDeepSeekMonitoring) await RefreshAsync();
         if (_config.EnableCodexMonitoring) await RefreshCodexAsync();
         if (_config.EnableOpenCodeMonitoring) await RefreshOpenCodeAsync();
+        if (_config.EnableOpenRouterMonitoring) await RefreshOpenRouterAsync();
     }
 
     private async void Settings_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -277,10 +292,13 @@ public partial class MainWindow : Window
             _provider = new DeepSeekApiClient(_configService.GetApiKey() ?? string.Empty);
         if (_openCodeProvider is IDisposable disposable) disposable.Dispose();
         _openCodeProvider = new OpenCodeUsageProvider(_configService.GetOpenCodeApiKey());
+        if (_openRouterProvider is IDisposable disposableOr) disposableOr.Dispose();
+        _openRouterProvider = new OpenRouterUsageProvider(_configService.GetOpenRouterApiKey());
         RefreshPeakStatus();
         if (_config.EnableDeepSeekMonitoring) await RefreshAsync();
         if (_config.EnableCodexMonitoring) await RefreshCodexAsync();
         if (_config.EnableOpenCodeMonitoring) await RefreshOpenCodeAsync();
+        if (_config.EnableOpenRouterMonitoring) await RefreshOpenRouterAsync();
     }
 
     private void ApplySettingsImmediately()
@@ -512,6 +530,63 @@ public partial class MainWindow : Window
         ApplyOpenCodeRow(null, MiniOcMonthlyPct, MiniOcMonthlyCd, MiniOcMonthlyBarFill);
     }
 
+    private async Task RefreshOpenRouterAsync()
+    {
+        if (!_config.EnableOpenRouterMonitoring || _openRouterRefreshing) return;
+        _openRouterRefreshing = true;
+        try
+        {
+            ApplyOpenRouterUsage(await _openRouterProvider.GetUsageAsync(_cancellation.Token));
+            UpdateRefreshTime();
+            RefreshMenuBar();
+        }
+        catch (OperationCanceledException) { }
+        catch
+        {
+            ApplyOpenRouterUsage(OpenRouterUsageSnapshot.Unavailable("刷新失败"));
+            UpdateRefreshTime();
+            RefreshMenuBar();
+        }
+        finally { _openRouterRefreshing = false; }
+    }
+
+    private void ApplyOpenRouterUsage(OpenRouterUsageSnapshot snapshot)
+    {
+        if (!snapshot.IsAvailable)
+        {
+            string reason = snapshot.Error ?? "暂不可用";
+            OpenRouterTitleText.Text = $"OpenRouter 额度（{reason}）";
+            OpenRouterText.Text = reason;
+            MiniOrLabel.Foreground = ThemeBrush("WarningBrush");
+            ClearOpenRouterRows();
+            _menuBarOpenRouterText = "--";
+            _menuBarOpenRouterTooltip = "OpenRouter：" + reason;
+            return;
+        }
+
+        OpenRouterTitleText.Text = "OpenRouter 额度";
+        OpenRouterText.Text = $"{OpenRouterUsageFormatter.FormatRemaining(snapshot)} · 剩余 {OpenRouterUsageFormatter.FormatRemainingPercent(snapshot)}";
+        MiniOrLabel.Foreground = ThemeBrush("TextMainBrush");
+        MiniOrPct.Text = $"{snapshot.RemainingPercent:0.#}%";
+        MiniOrRemaining.Text = $"${snapshot.RemainingCreditsUsd:0.##}";
+        double pct = (double)Math.Clamp(snapshot.RemainingPercent, 0m, 100m);
+        MiniOrBarFill.Width = pct / 100d * 34d;
+        var color = pct < 20
+            ? Color.FromRgb(0xE2, 0x4B, 0x4A)
+            : pct <= 70
+                ? Color.FromRgb(0xEF, 0x9F, 0x27)
+                : Color.FromRgb(0x78, 0xD7, 0x9A);
+        MiniOrBarFill.Background = new SolidColorBrush(color);
+        _menuBarOpenRouterText = $"{snapshot.RemainingPercent:0.#}%";
+        _menuBarOpenRouterTooltip = $"{OpenRouterUsageFormatter.FormatRemaining(snapshot)} · {OpenRouterUsageFormatter.FormatRemainingPercent(snapshot)}";
+    }
+
+    private void ClearOpenRouterRows()
+    {
+        MiniOrPct.Text = MiniOrRemaining.Text = "--";
+        MiniOrBarFill.Width = 0;
+    }
+
     private void RefreshPeakStatus()
     {
         bool isPeak = PeakHourCalculator.IsPeak(DateTime.Now, _config.PeakHourRanges);
@@ -690,6 +765,7 @@ public partial class MainWindow : Window
         _refreshTimer.Stop();
         _codexTimer.Stop();
         _openCodeTimer.Stop();
+        _openRouterTimer.Stop();
         _peakTimer.Stop();
         _positionSaveTimer.Stop();
         _autoHideTimer.Stop();
@@ -700,6 +776,7 @@ public partial class MainWindow : Window
         _menuBarBalance = null;
         if (_codexProvider is IDisposable codex) codex.Dispose();
         if (_openCodeProvider is IDisposable openCode) openCode.Dispose();
+        if (_openRouterProvider is IDisposable openRouter) openRouter.Dispose();
         Debug.WriteLine($"[DockLifecycle] OnClosing exit shutdown reason={e.CloseReason} visible={IsVisible}");
         Console.Error.WriteLine($"[DockLifecycle] OnClosing exit shutdown reason={e.CloseReason} visible={IsVisible}");
     }
@@ -814,12 +891,14 @@ public partial class MainWindow : Window
         }
         if (_config.EnableCodexMonitoring) titleParts.Add("GPT " + _menuBarCodexText);
         if (_config.EnableOpenCodeMonitoring) titleParts.Add("OC " + _menuBarOpenCodeText);
+        if (_config.EnableOpenRouterMonitoring) titleParts.Add("OR " + _menuBarOpenRouterText);
         if (_config.EnableWorkbuddyMonitoring) titleParts.Add("WB --");
         if (titleParts.Count == 0) titleParts.Add("额度监测已关闭");
         var tooltipParts = new List<string>();
         if (_config.EnableDeepSeekMonitoring) tooltipParts.Add(_menuBarBalanceTooltip);
         if (_config.EnableCodexMonitoring) tooltipParts.Add("ChatGPT Plus：" + _menuBarCodexTooltip);
         if (_config.EnableOpenCodeMonitoring) tooltipParts.Add("OpenCode Go：" + _menuBarOpenCodeTooltip);
+        if (_config.EnableOpenRouterMonitoring) tooltipParts.Add("OpenRouter：" + _menuBarOpenRouterTooltip);
         if (_config.EnableWorkbuddyMonitoring) tooltipParts.Add("WorkBuddy：暂无额度数据源");
         _menuBarBalance?.Update(string.Join(" · ", titleParts), string.Join(Environment.NewLine, tooltipParts));
     }

@@ -22,7 +22,7 @@
     <!-- 展开卡片：用于设置、错误详情和完整额度信息。 -->
     <Border x:Name="Card" Width="390" Margin="12" Padding="18"
             CornerRadius="16" Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
-      <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+      <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
         <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto">
           <StackPanel Orientation="Horizontal" Spacing="6">
             <TextBlock x:Name="StatusDot" Text="●" Foreground="{DynamicResource SuccessBrush}" VerticalAlignment="Center" />
@@ -60,12 +60,19 @@
           </StackPanel>
         </Border>
 
-        <Border x:Name="WorkbuddyPanel" Grid.Row="4" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,1,0,0" Padding="0,12,0,0" Margin="0,12,0,0">
+        <Border x:Name="OpenRouterPanel" Grid.Row="4" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,1,0,0" Padding="0,12,0,0" Margin="0,12,0,0">
+          <StackPanel Spacing="5">
+            <TextBlock x:Name="OpenRouterTitleText" Text="OpenRouter 额度" Foreground="{DynamicResource TextHeadingBrush}" FontWeight="SemiBold" />
+            <TextBlock x:Name="OpenRouterText" Text="正在读取 OpenRouter 额度…" TextWrapping="Wrap" Foreground="{DynamicResource TextAccentBrush}" />
+          </StackPanel>
+        </Border>
+
+        <Border x:Name="WorkbuddyPanel" Grid.Row="5" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,1,0,0" Padding="0,12,0,0" Margin="0,12,0,0">
           <TextBlock Text="WorkBuddy：暂无额度数据源" Foreground="{DynamicResource TextDimBrush}" />
         </Border>
 
-        <TextBlock Grid.Row="5" x:Name="ErrorText" Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,8,0,8" />
-        <Grid Grid.Row="6" ColumnDefinitions="*,Auto">
+        <TextBlock Grid.Row="6" x:Name="ErrorText" Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,8,0,8" />
+        <Grid Grid.Row="7" ColumnDefinitions="*,Auto">
           <TextBlock x:Name="RefreshTimeText" Text="上次刷新：--" Foreground="{DynamicResource TextDimBrush}" FontSize="11" />
           <Button Grid.Column="1" Content="隐藏" Click="Hide_Click" />
         </Grid>
@@ -76,7 +83,7 @@
     <Border x:Name="MiniCard" Margin="12,12,8,12" Padding="10,8,4,12"
             CornerRadius="18" Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
             ToolTip.Tip="拖动调整位置，双击展开">
-      <Grid x:Name="MiniContentPanel" ColumnDefinitions="Auto,Auto,Auto,Auto" VerticalAlignment="Center">
+      <Grid x:Name="MiniContentPanel" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto" VerticalAlignment="Center">
         <Border x:Name="MiniDeepSeekBlock" Grid.Column="0" ClipToBounds="True" Padding="5,4" VerticalAlignment="Center">
           <Grid ColumnDefinitions="22,66,0,10,40">
             <TextBlock x:Name="MiniDsLabel" Text="DS" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextMainBrush}" TextWrapping="NoWrap" VerticalAlignment="Center" />
@@ -126,7 +133,19 @@
             </Grid>
         </Border>
 
-        <Grid Grid.Column="3" ClipToBounds="True" VerticalAlignment="Center" Margin="8,0,0,0">
+        <Border x:Name="MiniOpenRouterBlock" Grid.Column="3" ClipToBounds="True" Background="{DynamicResource ControlBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="9" Padding="7,4" Margin="8,0,0,0" VerticalAlignment="Center">
+            <Grid ColumnDefinitions="24,34,52,34" RowDefinitions="Auto">
+              <TextBlock x:Name="MiniOrLabel" Text="OR" Foreground="{DynamicResource TextMainBrush}" FontWeight="SemiBold" TextWrapping="NoWrap" VerticalAlignment="Center" HorizontalAlignment="Center" />
+              <TextBlock x:Name="MiniOrPct" Grid.Column="1" Text="--" Foreground="{DynamicResource TextStrongBrush}" TextWrapping="NoWrap" HorizontalAlignment="Right" />
+              <TextBlock x:Name="MiniOrRemaining" Grid.Column="2" Text="--" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="NoWrap" HorizontalAlignment="Right" />
+              <Grid Grid.Column="3" Width="34" Height="5" VerticalAlignment="Center" Margin="0">
+                <Border CornerRadius="2.5" Background="{DynamicResource CapsuleTrackBrush}" />
+                <Border x:Name="MiniOrBarFill" CornerRadius="2.5" Background="{DynamicResource CapsuleSuccessBrush}" HorizontalAlignment="Left" Width="0" />
+              </Grid>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Column="4" ClipToBounds="True" VerticalAlignment="Center" Margin="8,0,0,0">
           <StackPanel x:Name="MiniButtonBar" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
             <Button x:Name="MiniEdgeAutoHideBtn" Width="56" Content="贴边" Click="MiniEdgeAutoHideBtn_Click" ToolTip.Tip="贴边自动隐藏" Padding="4,6" />
             <Button x:Name="AlwaysOnTopBtn" Width="56" Content="置顶" Click="AlwaysOnTop_Click" Padding="4,6" />

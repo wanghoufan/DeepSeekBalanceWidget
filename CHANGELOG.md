@@ -14,7 +14,7 @@
 - 新增 **Mac 置顶功能**：NSWindowSetLevel P/Invoke 实现 macOS 原生窗口层级
 - 新增 **Mac 单实例检测**：防止多开，Dock 图标点击还原已有窗口
 - 新增 **Mac 监测项独立开关**：设置面板新增 DeepSeek / ChatGPT / WorkBuddy / OpenCode 四项独立开关，ApplyMonitoringVisibility 按配置显隐
-- 新增 **Mac OpenRouter 预留**：接口/Provider/Parser/Formatter/Model 五文件 + 设置卡片（默认关闭）；API Key 与 DeepSeek / OpenCode 一致，存入 macOS 登录钥匙串（`com.deepseekbalancewidget.openrouter-api-key`），配置文件只留 `keychain` 标记，旧配置首次加载自动修复
+- 新增 **Mac OpenRouter 额度监测**（胶囊 OR 单行 + 展开卡片）：读取官方 `GET https://openrouter.ai/api/v1/credits`（需 Management Key），返回 `data.total_credits/total_usage`，展示剩余/总额（`$剩余 / $总额` + 剩余% + 进度条三色 <20%红/≤70%橙/else绿）；胶囊 OR = 剩余% + $剩余 + 34px 进度条，菜单栏同步 `OR xx%`；接口/Provider/Parser/Formatter/Model 五文件已接入真实网络请求（401/403/非2xx/网络异常/JSON 异常分支全覆盖，Timeout 15s），设置卡片默认关闭、Key 存入钥匙串（`com.deepseekbalancewidget.openrouter-api-key`）
 - 新增 **进度条 Track+Fill 模式**：替换 ProgressBar 控件，使用 Border 背景轨道 + 填充条，三色区间（<20%红, ≤70%橙, else绿）
 - 新增 **设置页 Apply 按钮**：应用设置但不关闭窗口，支持实时预览
 - 新增 **清除 Key 二次确认**：红色样式 + 确认对话框，防止误触
