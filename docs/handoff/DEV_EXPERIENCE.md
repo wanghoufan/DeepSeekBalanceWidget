@@ -293,4 +293,49 @@
 - Evidence：用户截图 Image 1（Todo `停止所有 Worker 和 App` + 用户纠正「不要关闭我打开的终端/经验总结智能体被关/你没有权限」）+ 之前同类越权口头约束历史
 - Status：Observed → Candidate（重复违反，待升级为 B 类项目规范并补 Contract Test/工具约束）
 
-<!-- 下一条从 E-007 开始追加 -->
+### E-007｜2026-08-31｜UI 设计鸡同鸭讲、需先出示意图达共识再动代码
+
+**1. 小白解释**
+> `鸡同鸭讲`就是双方各说各话——用户说“把间距收一收、按钮别被挡”，工人心里想的却是另一套尺寸，直接改代码后才发现不是用户想要的效果，又要返工。
+> `示意图`（Mock/Before-vs-After 对比图）就是先画个草图让大家看：改前长什么样、改后长什么样、每块宽多少。图上达成共识再去改 `XAML/AXAML`（WPF/Avalonia 的界面布局文件），一次就能改对，避免来回猜。
+
+**2. 问题 / 现象**
+- 历史做法：做 UI 设计时直接跟 Builder 说“改成怎么样”，口头描述尺寸/间距，不出图就让其改 `src/DeepSeekBalanceWidget/*.{xaml,cs}` / `src/DeepSeekBalanceWidget.Mac/*.{axaml,cs}` 并 `dotnet build`，结果与预期不一致，陷入 E-005 所述的反复派工返工。
+- 本次正面示范（Image 1）：Builder 未自行决定，而是先出方案并请求确认：① 列宽联动胶囊总宽 `188px → 152px`，`DS 152 + GPT 200 + OC 170 + 操作 244 = 766 + padding` 比现 `780` 略窄不更挤；② 保持“贴边/置顶/最小化/关闭”四键顺序不动，只调宽度与间距；③ 附 `UI 修改前后对比` 图：修改前 `DS 与右卡片空白大/关闭被右边界遮挡/贴边紧贴 OC 卡片`，修改后 `DS 180→152高峰贴右/操作区 206→244关闭完整/贴边与 OC 间距 8→16`，四键全部可见。并问“你看看这版效果√不√，确认后再改 `.axaml` 并跑 `dotnet build` 验证”。
+- 用户据此提炼规则：以后 UI 不能直接口述就开工，必须走“描述要求→出示意图→达共识→再开发”。
+
+**3. 为什么这是问题**
+- 文字≠视觉：间距/宽度/是否遮挡等 UI 问题无法靠文字精确传递，直接改代码易误解为“鸡同鸭讲”，改完才发现不是想要的，浪费 Token/时间并触发 E-005 的重复派工。
+- 无共识即无验收标准：没有图作为 `Evidence`（证据），`Product Reviewer` 与用户无法判断是否达标，继续空转。
+- 与治理联动：若不先对齐就进 `Builder → Reviewer → QA → Product` 链路，整条链路都在错误目标上验证。
+
+**4. 原因 / 背景（含源码或文档核对结果）**
+- 文档核对：
+  - `AGENTS.md:18` 目录约定 `Models/`/`Services/` 共用，UI 在 `src/DeepSeekBalanceWidget`（WPF）与 `src/DeepSeekBalanceWidget.Mac`（Avalonia）各自 `XAML/AXAML` 中，任何胶囊单行宽、按钮贴最右的调整均为跨文件联动（印证 Image 1 的总宽计算必要性）。
+  - `docs/roles/task-manager.md:5` 要求 Dispatch 前做好分类与派工依据，但未规定 UI 类任务需附 `visual spec`（视觉规格）作为派工附件。
+  - `docs/workflow/WORKFLOW.md:1` 的 Evidence 环节缺少“UI 共识图”作为前置 Gate，导致口述即开工。
+- 现状矛盾：本次 Builder 已自发做到“先出图再征确认”的正确示范，但此前多次返工说明该做法未被固化为流程，需从个人自觉升级为制度。
+
+**5. 本次纠正**
+- 用户明确：做 UI 设计时，不能直接说“改成怎么样”就开工；应先描述要求，让 Builder 出示意图（Before/After 对比、尺寸标注、问题点与调整点列表），达到最终共识后再继续开发。
+
+**6. 以后怎么避免**
+- 强制 `出图先行`：所有 UI 布局类需求（间距/宽度/显隐/排序）必须先产出示意图（含修改前/后对比、关键尺寸、总宽验算、四键顺序声明）并获用户 `√` 确认后，才允许改 `XAML/AXAML` 与 `dotnet build`。
+- 派工附件化：Task Manager 派 UI 任务时，必须附 `visual spec` 图与文字要点，Builder 回复也必须带图，不以纯文字作为开工依据。
+- 共识即 Gate：未获用户确认的 UI 方案不得进入 `Reviewer/QA` 环节，避免在错误目标上验收。
+
+**7. 下次可以直接对 Agent 说的话（一句可直接复制的派活话术）**
+> 「这是 UI 设计任务，先别改代码；请按要求出 Before/After 示意图（含关键宽度、间距、总宽验算与四键顺序），标注改前问题与改后效果，待我确认后再改 XAML/AXAML 并跑 dotnet build 验证。」
+
+**8. 技术处理（给开发者的准确方案，只描述不执行）**
+- 在 `docs/workflow/WORKFLOW.md` 与 `docs/roles/task-manager.md` 的 UI 派工段新增 Gate：`UI Visual Consensus Required` — Dispatch 时需附 `visual_spec`（图 + 尺寸表），Builder 需以同格式回图并 `await user confirmation` 后才写文件。
+- 为 `HANDOFF.md` 与 `EVIDENCE.jsonl` 增加 `ui_visual_consensus: { before_after_image, width_table, confirmed:true }` 字段，未确认的 UI 变更在 `continuation-guard` 中判为 `blocking_evidence` 不得推进到 Review。
+- 在 `docs/governance/PERMISSION_MATRIX.md` 约束 Builder：禁止无图直接大范围改 UI 布局，PR 模板要求贴对比图。代码一律不改，仅记录方案。
+
+**9. 适用范围**
+- 本项目所有 UI 视觉类改动（胶囊单行宽、DS/GPT/OC 区块宽度、按钮间距与可见性、刷新时间位置等）；复用到任何 WPF/Avalonia 前端及需像素级对齐的桌面小工具项目。归类：Workflow Improvement + Product Quality + Reusable Rule（正向模式固化）。
+
+- Evidence：用户截图 Image 1（Builder 主动出 `列宽联动总宽 766 vs 780` 方案 + 四键顺序不动声明 + `UI 修改前后对比` Before/After 图 + `DeepSeek 胶囊 UI 整改对比`）+ 用户规则“先出图达共识再开发，否则鸡同鸭讲”
+- Status：Observed → Candidate（正向经验，待升级为 B 类本项目 UI 流程规范 / C 类通用模板）
+
+<!-- 下一条从 E-008 开始追加 -->

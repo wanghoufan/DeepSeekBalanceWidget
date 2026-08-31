@@ -73,10 +73,10 @@
     </Border>
 
     <!-- Windows MiniCard 对应的 macOS 胶囊：三块固定宽度，操作区固定在最右。 -->
-    <Border x:Name="MiniCard" Margin="12" Padding="12,8"
+    <Border x:Name="MiniCard" Margin="12,12,8,12" Padding="10,8,4,12"
             CornerRadius="18" Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
             ToolTip.Tip="拖动调整位置，双击展开">
-      <Grid x:Name="MiniContentPanel" ColumnDefinitions="180,200,170,206" VerticalAlignment="Center">
+      <Grid x:Name="MiniContentPanel" ColumnDefinitions="Auto,Auto,Auto,Auto" VerticalAlignment="Center">
         <Border x:Name="MiniDeepSeekBlock" Grid.Column="0" ClipToBounds="True" Padding="5,4" VerticalAlignment="Center">
           <Grid ColumnDefinitions="22,66,0,10,40">
             <TextBlock x:Name="MiniDsLabel" Text="DS" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextMainBrush}" TextWrapping="NoWrap" VerticalAlignment="Center" />
@@ -126,14 +126,12 @@
             </Grid>
         </Border>
 
-        <Grid Grid.Column="3" Width="206" ClipToBounds="True" RowDefinitions="Auto,Auto" HorizontalAlignment="Left" VerticalAlignment="Center">
-          <TextBlock x:Name="MiniRefreshTimeText" Text="刷新 --:--:--" FontSize="10" Foreground="{DynamicResource TextDimBrush}"
-                     TextWrapping="NoWrap" HorizontalAlignment="Right" VerticalAlignment="Top" />
-          <StackPanel x:Name="MiniButtonBar" Grid.Row="1" Width="230" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,2,0,0">
-            <Button x:Name="MiniEdgeAutoHideBtn" Width="56" Content="贴边" Click="MiniEdgeAutoHideBtn_Click" ToolTip.Tip="贴边自动隐藏" />
-            <Button x:Name="AlwaysOnTopBtn" Width="56" Content="置顶" Click="AlwaysOnTop_Click" />
-            <Button x:Name="MiniMinBtn" Width="60" Content="最小化" Click="MiniMinBtn_Click" />
-            <Button x:Name="MiniCloseBtn" Width="56" Content="关闭" Click="MiniCloseBtn_Click" />
+        <Grid Grid.Column="3" ClipToBounds="True" VerticalAlignment="Center" Margin="8,0,0,0">
+          <StackPanel x:Name="MiniButtonBar" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+            <Button x:Name="MiniEdgeAutoHideBtn" Width="56" Content="贴边" Click="MiniEdgeAutoHideBtn_Click" ToolTip.Tip="贴边自动隐藏" Padding="4,6" />
+            <Button x:Name="AlwaysOnTopBtn" Width="56" Content="置顶" Click="AlwaysOnTop_Click" Padding="4,6" />
+            <Button x:Name="MiniMinBtn" Width="60" Content="最小化" Click="MiniMinBtn_Click" Padding="4,6" />
+            <Button x:Name="MiniCloseBtn" Width="56" Content="关闭" Click="MiniCloseBtn_Click" Padding="4,6" />
           </StackPanel>
         </Grid>
 

@@ -1,6 +1,8 @@
 # Build output
 src/**/bin/
 src/**/obj/
+tests/**/bin/
+tests/**/obj/
 release/
 *.app
 *.exe
@@ -25,3 +27,6 @@ config.json
 
 # Runtime
 docs/runtime/INTERNAL_CAPABILITY_CONSUMED.jsonl
+
+# WorkBuddy workspace data (memory, personal — do not commit)
+.workbuddy/

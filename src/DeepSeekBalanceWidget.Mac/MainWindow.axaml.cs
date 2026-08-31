@@ -531,7 +531,7 @@ public partial class MainWindow : Window
     {
         string value = DateTime.Now.ToString("HH:mm:ss");
         RefreshTimeText.Text = "上次刷新：" + value;
-        MiniRefreshTimeText.Text = "刷新 " + value;
+        // MiniRefreshTimeText.Text = "刷新 " + value; // 刷新时间已从迷你胶囊移除（B 档位），控件已删除，保留代码便于日后恢复
     }
 
     private void Window_PointerPressed(object? sender, PointerPressedEventArgs e)
