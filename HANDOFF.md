@@ -1,10 +1,11 @@
-# Handoff - 2026-08-31 15:40
+# Handoff - 2026-08-31 16:10
 
 ## 当前状态
-- Stage: Widget Mac 端 UI 改造
-- 构建: 0 Error(s), 0 Warning(s)
+- Stage: Widget Mac 端 UI 改造（已暂停）
+- 构建: 0 Error(s), 4 Warning(s)
 - App: `/Applications/DeepSeekBalanceWidget.app`
-- Git: 未提交（大量改动待提交）
+- Git: 已提交并推送到 GitHub（bb0e57a）
+- 进程: 已全部停止
 
 ## 已完成功能（16项）
 
@@ -37,11 +38,39 @@
 ## 未完成/需改进
 
 ### P0（必须修）
-1. ❌ DS 块间距偏大：`MiniDeepSeekBlock` Border Width=180 应移除，让内容自适应
+1. ❌ DS 块间距偏大：`MiniDeepSeekBlock` Border 已移除 Width，但可能仍需微调 Padding
 2. ❌ 按钮"关闭"被截断：所有按钮 Width 需增加到 56-60px，MiniButtonBar Width 增加到 230
 
 ### P1（后续补）
 3. ❌ macOS OpenRouter 卡片未添加到 SettingsWindow
+
+## 下次恢复开发提示词
+
+```
+恢复 DeepSeek Balance Widget 开发。
+
+读取 HANDOFF.md 了解当前状态和遗留问题。
+
+本次需要完成：
+1. 检查 DS 块间距是否合适，如不合适微调 Padding
+2. 检查按钮"关闭"是否被截断，如截断增加 Width
+3. macOS OpenRouter 卡片添加到 SettingsWindow
+4. 全部完成后走 QA → Product Review 流程
+5. 更新 CHANGELOG.md 并 git commit + push
+
+模型分工（已写入 MODEL_ROUTING_REGISTRY.yaml）：
+- 初级 Builder: codex/gpt-5.6-luna (medium)
+- 高级 Builder: codex/gpt-5.6-sol (medium)
+- QA: codex/gpt-5.6-luna (max)
+- Product Reviewer: opencode/muse-spark-1.2-contributor-free
+
+注意事项：
+- 不要关闭用户自己创建的终端标签
+- 每次部署前 pkill -9 彻底清理旧进程
+- 简单 UI 修复不要走完整流程，一个 Builder 精确改一次
+- 持久问题用常驻 TUI，不要反复派一次性临时工
+- Terra 模型 API 不可用，暂用 Luna
+```
 
 ## 关键代码位置
 
