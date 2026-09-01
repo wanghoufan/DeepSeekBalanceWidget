@@ -1,0 +1,78 @@
+name: Release macOS
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要构建并发布的 tag（例如 v0.6.0）'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build macOS (${{ matrix.arch }})
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+          - arch: x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish ${{ matrix.arch }} bundle
+        run: bash scripts/publish-macos.sh ${{ matrix.arch }}
+
+      - name: Zip bundle
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            "release/macos-${{ matrix.arch }}/DeepSeekBalanceWidget.app" \
+            "DeepSeekBalanceWidget-${TAG}-macos-${{ matrix.arch }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: DeepSeekBalanceWidget-*-macos-${{ matrix.arch }}.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish release assets
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Attach zips to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          cd artifacts
+          ls -lh */*.zip
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG 已存在，覆盖同名资产"
+            gh release upload "$TAG" ./*/*.zip --clobber
+          else
+            echo "Release $TAG 不存在，创建并上传"
+            gh release create "$TAG" \
+              --title "DeepSeek Balance Widget $TAG" \
+              --generate-notes \
+              ./*/*.zip
+          fi
