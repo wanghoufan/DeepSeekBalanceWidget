@@ -61,8 +61,8 @@ public sealed class AppConfig
     /// <summary>ChatGPT 周额度是否参与低量预警。</summary>
     public bool GptWeeklyAlertEnabled { get; set; } = true;
 
-    /// <summary>ChatGPT 额度恢复播报阈值。</summary>
-    public int GptQuotaRecoveredPercent { get; set; } = 95;
+    /// <summary>ChatGPT 额度恢复播报阈值（默认 100%，即回到满额才播报恢复）。</summary>
+    public int GptQuotaRecoveredPercent { get; set; } = 100;
 
     /// <summary>OpenCode 额度预警总开关（5 小时 / 周 / 月）。</summary>
     public bool EnableOpenCodeQuotaAlerts { get; set; } = true;

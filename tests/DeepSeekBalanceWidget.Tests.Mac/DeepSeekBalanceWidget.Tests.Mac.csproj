@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS 可运行的测试项目：Windows 版测试项目引用 WPF（net8.0-windows），
+    macOS 缺 WindowsDesktop SDK 无法构建。本项目与 Mac 应用一致，
+    直接链接共享 Models/Services，不引用任何 WPF 项目。
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="xunit" Version="2.5.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- EdgeAutoHideCalculatorTests 依赖 WPF 专用类型（System.Windows.Rect / DockEdge），macOS 无 WPF，排除 -->
+    <Compile Include="../DeepSeekBalanceWidget.Tests/*.cs" Link="Tests/%(Filename)%(Extension)" Exclude="../DeepSeekBalanceWidget.Tests/EdgeAutoHideCalculatorTests.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/AlertEvaluator.cs" Link="Services/AlertEvaluator.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/BalanceChangeCalculator.cs" Link="Services/BalanceChangeCalculator.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/BalanceParser.cs" Link="Services/BalanceParser.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/CcSwitchCodexUsageProvider.cs" Link="Services/CcSwitchCodexUsageProvider.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/CodexAppServerClient.cs" Link="Services/CodexAppServerClient.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/CodexConsumptionRateTracker.cs" Link="Services/CodexConsumptionRateTracker.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/CodexQuotaAlertEvaluator.cs" Link="Services/CodexQuotaAlertEvaluator.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/CodexUsageFormatter.cs" Link="Services/CodexUsageFormatter.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/CodexUsageParser.cs" Link="Services/CodexUsageParser.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/CurrencySelector.cs" Link="Services/CurrencySelector.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/DeepSeekApiClient.cs" Link="Services/DeepSeekApiClient.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/IBalanceProvider.cs" Link="Services/IBalanceProvider.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/ICodexAccountsUsageProvider.cs" Link="Services/ICodexAccountsUsageProvider.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/ICodexUsageProvider.cs" Link="Services/ICodexUsageProvider.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/MockBalanceService.cs" Link="Services/MockBalanceService.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/IOpenCodeUsageProvider.cs" Link="Services/IOpenCodeUsageProvider.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/OpenCodeUsageProvider.cs" Link="Services/OpenCodeUsageProvider.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/OpenCodeUsageFormatter.cs" Link="Services/OpenCodeUsageFormatter.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/OpenCodeQuotaAlertEvaluator.cs" Link="Services/OpenCodeQuotaAlertEvaluator.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/IOpenRouterUsageProvider.cs" Link="Services/IOpenRouterUsageProvider.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/OpenRouterUsageProvider.cs" Link="Services/OpenRouterUsageProvider.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/OpenRouterUsageParser.cs" Link="Services/OpenRouterUsageParser.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/OpenRouterUsageFormatter.cs" Link="Services/OpenRouterUsageFormatter.cs" />
+    <Compile Include="../../src/DeepSeekBalanceWidget/Services/PeakHourCalculator.cs" Link="Services/PeakHourCalculator.cs" />
+  </ItemGroup>
+
+</Project>

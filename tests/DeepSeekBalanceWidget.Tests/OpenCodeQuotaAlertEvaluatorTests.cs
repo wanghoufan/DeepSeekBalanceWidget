@@ -115,7 +115,7 @@ public class OpenCodeQuotaAlertEvaluatorTests
     public void DisabledAlerts_ReturnEmpty()
     {
         var cfg = Config();
-        cfg.EnableCodexQuotaAlerts = false;
+        cfg.EnableOpenCodeQuotaAlerts = false; // OpenCode 评估器受独立开关控制（原误改 EnableCodexQuotaAlerts，从未真正关闭）
         _evaluator.Evaluate(Snapshot(("rolling", 50)), cfg, DateTimeOffset.Now);
         Assert.Empty(_evaluator.Evaluate(
             Snapshot(("rolling", 5)), cfg, DateTimeOffset.Now.AddMinutes(1)));

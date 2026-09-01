@@ -14,7 +14,7 @@
 [![Platform](https://img.shields.io/badge/platform-macOS-000000?logo=apple)](https://github.com/wanghoufan/DeepSeekBalanceWidget-Mac)
 [![.NET](https://img.shields.io/badge/.NET-8.0-512BD4)](https://dotnet.microsoft.com/)
 
-![DeepSeek 余额监控 v0.4.0](artifacts/ui-audit/02-after.png)
+![DeepSeek 余额监控 v0.5.0](artifacts/ui-audit/02-after.png)
 
 ## 下载
 
@@ -22,8 +22,8 @@
 
 | 文件 | 适用平台 |
 | --- | --- |
-| `DeepSeekBalanceWidget-v0.4.0-macos-arm64.zip` | macOS Apple Silicon（M 系列） |
-| `DeepSeekBalanceWidget-v0.4.0-macos-x64.zip` | macOS Intel |
+| `DeepSeekBalanceWidget-v0.5.0-macos-arm64.zip` | macOS Apple Silicon（M 系列） |
+| `DeepSeekBalanceWidget-v0.5.0-macos-x64.zip` | macOS Intel |
 
 **macOS**：解压后把 `DeepSeekBalanceWidget.app` 拖入“应用程序”文件夹即可，无需安装 .NET。
 
@@ -74,16 +74,18 @@ bash scripts/install-macos.sh arm64
 - 菜单栏状态、置顶、隐藏、开机自启；按北京时间显示官方峰值时段参考
 - API Key 存入 macOS 登录钥匙串，不落明文、不上传
 
-## v0.4.0 更新亮点
+## v0.5.0 更新亮点
 
-- **ChatGPT 用量对齐表格**：双账号上下两行、五列逐列对齐，每行含剩余百分比与重置倒计时
-- **迷你胶囊单行宽布局**：DeepSeek 余额｜GPT 双账号四列对齐｜WorkBuddy 占位，贴边按钮固定最右
-- **胶囊区块顺序自定义**：设置内上移/下移调整渲染顺序，保存即生效
+- **GPT 额度恢复提醒**：5 小时 / 周额度只要回到满额（默认 100%）即弹出绿色恢复通知（环形恢复箭头图标 + 绿色边框，8 秒自动消失、不响铃），同时胶囊 GPT 区块绿色边框高亮 2 分钟；与橙色预警一眼可辨
+- **Mac 端正式接入 GPT / OpenCode 额度预警弹窗**：此前评估器虽已编译但主窗口未调用，Mac 上预警与恢复弹窗均不会显示，本次补齐接线
+- **OpenCode Go 额度监测**（替代原 WorkBuddy 占位）：读取官方用量接口，5 小时 / 周 / 月三窗口全量展示，胶囊内每行含剩余百分比、距恢复倒计时与进度条
+- **预警系统重构**：低量预警改为常驻弹窗 + 循环警报声，需点击「知道了」关闭，位置可配（默认右上角）；OpenCode 只保留低量预警、不播报恢复
+- **设置页改版**：左侧导航 + 监测项 2×2 卡片，各项独立开关与「测试连接」行式布局
 
-> **开发中（未发布）**：工作区已提交但尚未打 tag 发布，包含 OpenCode Go 额度监测（替代原 WB 占位）、预警系统重构（常驻弹窗 + 循环警报声、位置可配）、设置页改版（左侧导航 + 监测项 2×2 卡片）、胶囊整改（单行宽、按钮贴最右、胶囊刷新时间移除、OC 区块、GPT 列距收紧）与若干修复。发布时将随版本号一并更新上方下载表与徽标。详见 [CHANGELOG.md](CHANGELOG.md)「未发布」。
+详见 [CHANGELOG.md](CHANGELOG.md)。
 
 <details>
-<summary>查看当前界面（v0.4.0）</summary>
+<summary>查看当前界面（v0.5.0）</summary>
 
 | 迷你胶囊（单行宽布局） | 展开卡片 |
 | --- | --- |

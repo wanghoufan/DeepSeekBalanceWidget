@@ -59,6 +59,15 @@ public partial class ToastWindow : Window
             ? Brush.Parse("#6DDC6D")
             : Brush.Parse("#FFB04D");
 
+        // 恢复通知：绿色环形恢复箭头图标 + 绿色边框，与橙色预警明确区分（用户确认的视觉方案）。
+        if (isRecovery)
+        {
+            IconPath.IsVisible = true;
+            IconPath.Stroke = Brush.Parse("#6DDC6D");
+            ToastBorder.BorderBrush = Brush.Parse("#6DDC6D");
+            ToastBorder.BorderThickness = new Thickness(1.5);
+        }
+
         if (style == ToastAlertStyle.Alarm)
         {
             ToastBorder.BorderBrush = Brush.Parse("#FFB04D");

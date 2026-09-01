@@ -17,15 +17,28 @@
           CornerRadius="8"
           Padding="10">
     <StackPanel Spacing="4">
-      <Grid ColumnDefinitions="*,Auto">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <!-- 恢复提醒图标（环形恢复箭头，绿色）：仅恢复通知时显示 -->
+        <Path x:Name="IconPath"
+              Width="16" Height="16"
+              Stretch="Uniform"
+              IsVisible="False"
+              Stroke="#6DDC6D"
+              StrokeThickness="2.2"
+              StrokeLineCap="Round"
+              StrokeJoin="Round"
+              Data="M 19.5 9.5 A 7.5 7.5 0 1 0 20 15 M 19.5 4.5 L 19.5 9.5 L 14.5 9.5"
+              VerticalAlignment="Center"
+              Margin="0,0,8,0" />
         <TextBlock x:Name="TitleText"
+                   Grid.Column="1"
                    FontSize="13"
                    FontWeight="Bold"
                    Foreground="#FFFFFF"
                    TextWrapping="Wrap"
                    VerticalAlignment="Center" />
         <Button x:Name="DismissBtn"
-                Grid.Column="1"
+                Grid.Column="2"
                 Content="知道了"
                 IsVisible="False"
                 Click="DismissBtn_Click"

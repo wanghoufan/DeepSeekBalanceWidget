@@ -86,15 +86,15 @@ public sealed class CodexQuotaAlertEvaluator
             return;
         }
 
-        // 恢复播报的前置条件是「本周期确实预警过」，即额度真的被消耗到档位以下。
-        // 若只看"上次剩余低于恢复阈值"，额度本就充足（如 60%）时单纯因周期重置也会误报。
-        // 同时必须在「真正进入新周期」（ResetsAt 变化）时才清空 NotifiedThresholds，
-        // 否则数据短暂回弹到 95% 就会误清空，导致 13% 这种低位档位被反复弹出。
-        bool isNewCycle = !state.LastResetsAt.HasValue
-                          || !window.ResetsAt.HasValue
-                          || window.ResetsAt.Value > state.LastResetsAt.Value;
-        bool recovered = state.NotifiedThresholds.Count > 0 && remaining >= recoveredAt;
-        if (recovered && isNewCycle && IsOutsideRecoveryCooldown(state, now, cooldown))
+        // 恢复判定：只要剩余百分比重新回到恢复线（默认 100%，即满额）就播报恢复，
+        // 不再要求「本周期预警过」——用户明确要求额度恢复后一律提醒（5h 与周额度均适用）。
+        // 用「上次低于恢复线 → 本次回到恢复线及以上」的跃迁判定：
+        // 满额状态下反复刷新不会重复播报，只有真正从低位回到高位才触发。
+        // 冷却时间戳吸收恢复线附近的抖动；与低量预警互不阻塞。
+        bool recovered = remaining >= recoveredAt
+                         && state.LastRemainingPercent < recoveredAt
+                         && IsOutsideRecoveryCooldown(state, now, cooldown);
+        if (recovered)
         {
             alerts.Add(new CodexQuotaAlert(
                 account.AccountId, account.Email, kind, LabelOf(kind),

@@ -72,6 +72,12 @@ public partial class MainWindow : Window
     private bool _isRestoringFromDock;
     private DateTime _lastPointerPressUtc;
     private DockEdge _dockEdge;
+    private readonly CodexQuotaAlertEvaluator _codexQuotaAlerts = new();
+    private readonly OpenCodeQuotaAlertEvaluator _openCodeQuotaAlerts = new();
+    private IReadOnlyList<CodexAccountUsageSnapshot> _lastCodexAccounts = Array.Empty<CodexAccountUsageSnapshot>();
+    private bool _gptRecoveryFlashActive;
+    private readonly DispatcherTimer _gptRecoveryTimer;
+    private const double GptRecoveryFlashSeconds = 120;
 
     // App uses this to keep the close guard active for the full activation
     // callback, including any native close event raised after BringToFront.
@@ -107,6 +113,13 @@ public partial class MainWindow : Window
         _positionSaveTimer.Tick += (_, _) => { _positionSaveTimer.Stop(); SaveWindowPosition(); };
         _autoHideTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _autoHideTimer.Tick += (_, _) => AutoHideTimerTick();
+        _gptRecoveryTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(GptRecoveryFlashSeconds) };
+        _gptRecoveryTimer.Tick += (_, _) =>
+        {
+            _gptRecoveryTimer.Stop();
+            _gptRecoveryFlashActive = false;
+            RefreshGptCapsuleBorder();
+        };
 
         Opened += OnOpened;
         Closing += OnClosing;
@@ -405,6 +418,7 @@ public partial class MainWindow : Window
         {
             var accounts = await _codexProvider.GetUsagesAsync(_cancellation.Token);
             ApplyCodexUsages(accounts);
+            RaiseCodexQuotaAlerts(accounts);
             _menuBarCodexText = FormatMenuBarCodex(accounts);
             _menuBarCodexTooltip = accounts.Count == 0 ? "未找到可用的 CC Switch 账号" : string.Join(Environment.NewLine, accounts.Take(2).Select(FormatAccount));
             UpdateRefreshTime();
@@ -425,6 +439,7 @@ public partial class MainWindow : Window
 
     private void ApplyCodexUsages(IReadOnlyList<CodexAccountUsageSnapshot> usages)
     {
+        _lastCodexAccounts = usages;
         var accounts = usages.Take(2).ToArray();
         CodexText.Text = accounts.Length == 0
             ? "未找到可用的 CC Switch 账号"
@@ -432,6 +447,7 @@ public partial class MainWindow : Window
         ClearMiniGptRows();
         if (accounts.Length > 0) ApplyCodexAccount(accounts[0], MiniGptA1Label, MiniGptA1Five, MiniGptA1FiveCd, MiniGptA1Weekly, MiniGptA1WeeklyCd);
         if (accounts.Length > 1) ApplyCodexAccount(accounts[1], MiniGptA2Label, MiniGptA2Five, MiniGptA2FiveCd, MiniGptA2Weekly, MiniGptA2WeeklyCd);
+        RefreshGptCapsuleBorder();
     }
 
     private static void ApplyCodexAccount(CodexAccountUsageSnapshot account, TextBlock label, TextBlock five, TextBlock fiveCd, TextBlock weekly, TextBlock weeklyCd)
@@ -455,6 +471,120 @@ public partial class MainWindow : Window
         foreach (var text in new[] { MiniGptA1Label, MiniGptA1Five, MiniGptA1FiveCd, MiniGptA1Weekly, MiniGptA1WeeklyCd,
             MiniGptA2Label, MiniGptA2Five, MiniGptA2FiveCd, MiniGptA2Weekly, MiniGptA2WeeklyCd }) text.Text = "--";
     }
+
+    /// <summary>
+    /// 评估 ChatGPT 额度预警并弹窗：低量走警报（橙色常驻弹窗 + 警报声），
+    /// 恢复走普通通知（绿色标题、自动消失），并驱动胶囊 GPT 区块边框状态色。
+    /// </summary>
+    private void RaiseCodexQuotaAlerts(IReadOnlyList<CodexAccountUsageSnapshot> accounts)
+    {
+        bool toastsEnabled = _config.ShowToastNotifications;
+        foreach (var alert in _codexQuotaAlerts.Evaluate(accounts, _config, DateTimeOffset.Now))
+        {
+            if (alert.IsRecovery)
+            {
+                StartGptRecoveryFlash();
+                if (!toastsEnabled) continue;
+                MacToastService.Show(
+                    $"{ShortAccountName(alert.Email)} · {alert.WindowLabel}已恢复",
+                    $"剩余额度已回到 {alert.RemainingPercent}%", _config);
+                continue;
+            }
+
+            if (!toastsEnabled) continue;
+            string resetHint = alert.ResetsAt is DateTimeOffset resetsAt
+                ? $"预计 {resetsAt.ToLocalTime():MM-dd HH:mm} 恢复"
+                : "恢复时间未知";
+            MacToastService.Show(
+                $"{ShortAccountName(alert.Email)} · {alert.WindowLabel}仅剩 {alert.RemainingPercent}%",
+                resetHint, _config, ToastAlertStyle.Alarm);
+        }
+        RefreshGptCapsuleBorder();
+    }
+
+    /// <summary>
+    /// 评估 OpenCode 额度预警：只播报低量预警，不做恢复提醒（消耗量小，无需打扰）。
+    /// </summary>
+    private void RaiseOpenCodeQuotaAlerts(OpenCodeUsageSnapshot snapshot)
+    {
+        foreach (var alert in _openCodeQuotaAlerts.Evaluate(snapshot, _config, DateTimeOffset.Now))
+        {
+            if (alert.IsRecovery) continue;
+            if (!_config.ShowToastNotifications) continue;
+            string usedHint = alert.EstimatedUsedUsd.HasValue
+                ? $"（已用 ≈ ${alert.EstimatedUsedUsd.Value:0.##}）"
+                : string.Empty;
+            string resetHint = alert.ResetsAt is DateTimeOffset resetsAt
+                ? $"预计 {resetsAt.ToLocalTime():MM-dd HH:mm} 恢复"
+                : "恢复时间未知";
+            MacToastService.Show(
+                $"OpenCode · {alert.WindowLabel}仅剩 {alert.RemainingPercent}%",
+                $"{usedHint}{resetHint}", _config, ToastAlertStyle.Alarm);
+        }
+    }
+
+    private static string ShortAccountName(string? email)
+    {
+        if (string.IsNullOrWhiteSpace(email)) return "----";
+        string local = email.Split('@')[0];
+        return string.IsNullOrWhiteSpace(local) ? "----" : local;
+    }
+
+    /// <summary>恢复提醒触发后，胶囊 GPT 区块边框高亮绿色 2 分钟，到期后按数据重算。</summary>
+    private void StartGptRecoveryFlash()
+    {
+        _gptRecoveryFlashActive = true;
+        MiniGptBlock.BorderBrush = ThemeBrush("SuccessBrush");
+        MiniGptBlock.BorderThickness = new Thickness(1.5);
+        _gptRecoveryTimer.Stop();
+        _gptRecoveryTimer.Start();
+    }
+
+    /// <summary>
+    /// 按当前额度数据刷新胶囊 GPT 区块边框：
+    /// 恢复高亮期内保持绿色；任一启用窗口剩余 ≤ 最高档位 → 橙色（≤ 最低档位 → 红色）；
+    /// 其余情况恢复默认边框。
+    /// </summary>
+    private void RefreshGptCapsuleBorder()
+    {
+        if (_gptRecoveryFlashActive)
+        {
+            MiniGptBlock.BorderBrush = ThemeBrush("SuccessBrush");
+            MiniGptBlock.BorderThickness = new Thickness(1.5);
+            return;
+        }
+
+        var thresholds = (_config.GptQuotaAlertThresholds ?? new List<int>())
+            .Where(t => t > 0 && t < 100)
+            .Distinct()
+            .OrderByDescending(t => t)
+            .ToArray();
+        if (thresholds.Length > 0)
+        {
+            int highest = thresholds[0];
+            int lowest = thresholds[^1];
+            int minRemaining = _lastCodexAccounts
+                .Where(account => account.Usage is { IsAvailable: true })
+                .SelectMany(account => account.Usage.Windows)
+                .Where(IsGptWindowWarned)
+                .Select(window => window.RemainingPercent)
+                .DefaultIfEmpty(101)
+                .Min();
+            if (minRemaining <= highest)
+            {
+                MiniGptBlock.BorderBrush = ThemeBrush(minRemaining <= lowest ? "ErrorBrush" : "WarningBrush");
+                MiniGptBlock.BorderThickness = new Thickness(1.5);
+                return;
+            }
+        }
+
+        MiniGptBlock.BorderBrush = ThemeBrush("BorderBrush");
+        MiniGptBlock.BorderThickness = new Thickness(1);
+    }
+
+    /// <summary>5 小时窗口始终参与边框预警；周窗口仅在周额度预警开启时参与。</summary>
+    private bool IsGptWindowWarned(CodexUsageWindow window)
+        => (window.DurationMinutes ?? 300) <= 360 || _config.GptWeeklyAlertEnabled;
 
     private async Task RefreshOpenCodeAsync()
     {
@@ -500,6 +630,7 @@ public partial class MainWindow : Window
         ApplyOpenCodeRow(byKind.GetValueOrDefault("monthly"), MiniOcMonthlyPct, MiniOcMonthlyCd, MiniOcMonthlyBarFill);
         _menuBarOpenCodeText = snapshot.Windows.Count == 0 ? "--" : string.Join("/", snapshot.Windows.Select(w => w.RemainingPercent)) + "%";
         _menuBarOpenCodeTooltip = OpenCodeText.Text ?? string.Empty;
+        RaiseOpenCodeQuotaAlerts(snapshot);
     }
 
     private static void ApplyOpenCodeRow(OpenCodeUsageWindow? window, TextBlock pct, TextBlock countdown, Border barFill)
@@ -769,6 +900,7 @@ public partial class MainWindow : Window
         _peakTimer.Stop();
         _positionSaveTimer.Stop();
         _autoHideTimer.Stop();
+        _gptRecoveryTimer.Stop();
         _cancellation.Cancel();
         SaveWindowPosition();
         _cancellation.Dispose();

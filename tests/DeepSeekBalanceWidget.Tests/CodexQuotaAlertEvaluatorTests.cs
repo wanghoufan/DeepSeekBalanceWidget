@@ -118,16 +118,19 @@ public class CodexQuotaAlertEvaluatorTests
     }
 
     [Fact]
-    public void ResetWhilePlenty_DoesNotAnnounceRecovery()
+    public void ResetWhilePlenty_AnnouncesRecovery()
     {
         var evaluator = new CodexQuotaAlertEvaluator();
         var cfg = Cfg();
 
         evaluator.Evaluate(new[] { Account("a", Win(60, FiveHourMinutes)) }, cfg, Now);
 
-        // 本就充足时被重置回 100%，不应打扰用户。
-        Assert.Empty(evaluator.Evaluate(
+        // 用户要求「只要额度恢复就提醒」：即使未触发过低量预警，
+        // 重置回 100% 也应播报恢复。
+        var alert = Assert.Single(evaluator.Evaluate(
             new[] { Account("a", Win(100, FiveHourMinutes, ResetsAt)) }, cfg, Now));
+        Assert.True(alert.IsRecovery);
+        Assert.Equal(100, alert.RemainingPercent);
     }
 
     [Fact]
@@ -240,7 +243,7 @@ public class CodexQuotaAlertEvaluatorTests
         // 用户把阈值设得比恢复线还高时的防御：同一刷新内只播报恢复，不弹自相矛盾的“仅剩”。
         var cfg = Cfg();
         cfg.CodexQuotaAlertThresholds = new List<int> { 99 };
-        cfg.CodexQuotaRecoveredPercent = 95;
+        cfg.GptQuotaRecoveredPercent = 95;
         cfg.CodexQuotaAlertCooldownSeconds = 0;
         var evaluator = new CodexQuotaAlertEvaluator();
 
@@ -251,9 +254,11 @@ public class CodexQuotaAlertEvaluatorTests
         Assert.False(low.IsRecovery);
         Assert.Equal(99, low.Threshold);
 
+        // 跌到恢复线以下后回到高位：恢复优先，不再同时弹“仅剩”。
+        evaluator.Evaluate(new[] { Account("a", Win(90, FiveHourMinutes)) }, cfg, Now);
         var recovery = Assert.Single(evaluator.Evaluate(
-            new[] { Account("a", Win(98, FiveHourMinutes)) }, cfg, Now.AddMinutes(1)));
+            new[] { Account("a", Win(97, FiveHourMinutes)) }, cfg, Now.AddMinutes(1)));
         Assert.True(recovery.IsRecovery);
-        Assert.Equal(98, recovery.RemainingPercent);
+        Assert.Equal(97, recovery.RemainingPercent);
     }
 }
